@@ -2,32 +2,24 @@
 import { GoogleGenAI } from "@google/genai";
 import { Customer, Installation, InventoryItem, ProductCategory } from "../types";
 
-// Helper to lazily get the AI instance
-const getAI = () => {
-  let apiKey = '';
-  try {
-    // Safely attempt to access process.env
-    // This prevents "ReferenceError: process is not defined" in browser environments lacking polyfills
-    if (typeof process !== 'undefined' && process.env) {
-      apiKey = process.env.API_KEY || '';
-    }
-  } catch (e) {
-    console.warn("Could not access process.env.API_KEY");
+// Helper to safely get the API key without crashing if process is undefined
+const getApiKey = () => {
+  if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+    return process.env.API_KEY;
   }
-  return new GoogleGenAI({ apiKey });
+  return '';
 };
 
 export const generateCustomerEmail = async (customer: Customer, installation: Installation): Promise<string> => {
   try {
-    const ai = getAI();
-    // Re-check api key availability (though SDK handles empty key gracefully usually, prompts fail)
-    let hasKey = false;
-    try {
-        if (typeof process !== 'undefined' && process.env && process.env.API_KEY) hasKey = true;
-    } catch {}
-    
-    if (!hasKey) return "Brak klucza API. Skonfiguruj klucz, aby używać asystenta AI.";
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      console.error("API Key is missing. Please set API_KEY in your environment variables.");
+      return "Błąd: Brak klucza API. Skontaktuj się z administratorem.";
+    }
 
+    const ai = new GoogleGenAI({ apiKey: apiKey });
+    
     const prompt = `
       Jesteś asystentem w firmie fotowoltaicznej "SolarCRM". 
       Napisz profesjonalną i uprzejmą wiadomość email (tylko treść) do klienta ${customer.name}.
@@ -56,19 +48,19 @@ export const generateCustomerEmail = async (customer: Customer, installation: In
     return response.text || "Nie udało się wygenerować wiadomości.";
   } catch (error) {
     console.error("Gemini Error:", error);
-    return "Wystąpił błąd podczas generowania wiadomości.";
+    return "Wystąpił błąd podczas generowania wiadomości. Sprawdź konfigurację API Key.";
   }
 };
 
 export const analyzeInventory = async (inventory: InventoryItem[]): Promise<string> => {
   try {
-    const ai = getAI();
-    let hasKey = false;
-    try {
-        if (typeof process !== 'undefined' && process.env && process.env.API_KEY) hasKey = true;
-    } catch {}
-    
-    if (!hasKey) return "Brak klucza API.";
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      console.error("API Key is missing.");
+      return "Błąd: Brak klucza API.";
+    }
+
+    const ai = new GoogleGenAI({ apiKey: apiKey });
 
     const inventoryData = inventory.map(item => 
       `${item.name} (${item.category}): ${item.quantity} ${item.unit}. Min: ${item.minQuantity}. Gwarancja: ${item.warranty}.${item.power ? ` Moc: ${item.power}${item.category === ProductCategory.PANEL ? 'W' : 'kW'}.` : ''}${item.capacity ? ` Pojemność: ${item.capacity}kWh.` : ''}${item.url ? ` Link: ${item.url}` : ''}`
@@ -93,6 +85,6 @@ export const analyzeInventory = async (inventory: InventoryItem[]): Promise<stri
     return response.text || "Nie udało się wygenerować raportu.";
   } catch (error) {
     console.error("Gemini Error:", error);
-    return "Błąd analizy.";
+    return "Błąd analizy. Sprawdź konfigurację API Key.";
   }
 };
