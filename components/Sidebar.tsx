@@ -1,0 +1,90 @@
+
+import React from 'react';
+import { LayoutDashboard, Users, Wrench, Package, Sun, Grid, UserCircle, Briefcase, LogOut } from 'lucide-react';
+import { ViewState, User, UserRole } from '../types';
+
+interface SidebarProps {
+  currentView: ViewState;
+  onChangeView: (view: ViewState) => void;
+  currentUser: User;
+  onLogout: () => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, currentUser, onLogout }) => {
+  
+  // Define permission logic
+  const canAccess = (role: UserRole, view: ViewState): boolean => {
+    switch (role) {
+      case UserRole.ADMIN:
+        return true; // Access everything
+      case UserRole.SALES:
+        return ['SALES_ROOM', 'CUSTOMERS', 'INSTALLATIONS', 'APPLICATIONS'].includes(view);
+      case UserRole.INSTALLER:
+        return ['INSTALLATIONS', 'INVENTORY'].includes(view);
+      case UserRole.OFFICE:
+        return ['CUSTOMERS', 'INSTALLATIONS', 'INVENTORY'].includes(view); // Removed DASHBOARD
+      default:
+        return false;
+    }
+  };
+
+  const menuItems = [
+    { id: 'DASHBOARD', label: 'Pulpit', icon: LayoutDashboard },
+    { id: 'SALES_ROOM', label: 'Pokój Handlowca', icon: Briefcase },
+    { id: 'CUSTOMERS', label: 'Klienci', icon: Users },
+    { id: 'INSTALLATIONS', label: 'Montaże', icon: Wrench },
+    { id: 'INVENTORY', label: 'Magazyn', icon: Package },
+    { id: 'APPLICATIONS', label: 'Aplikacja', icon: Grid },
+  ];
+
+  const visibleMenuItems = menuItems.filter(item => canAccess(currentUser.role, item.id as ViewState));
+
+  return (
+    <div className="w-64 bg-slate-900 text-white flex flex-col h-full shadow-xl">
+      <div className="p-6 flex items-center space-x-3 border-b border-slate-700">
+        <Sun className="text-yellow-400 w-8 h-8" />
+        <h1 className="text-xl font-bold tracking-wider">SolarCRM</h1>
+      </div>
+      
+      <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+        {visibleMenuItems.map((item) => {
+          const isActive = currentView === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => onChangeView(item.id as ViewState)}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${
+                isActive 
+                  ? 'bg-blue-600 text-white shadow-lg' 
+                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <item.icon className={`w-5 h-5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+              <span className="font-medium">{item.label}</span>
+            </button>
+          );
+        })}
+      </nav>
+
+      <div className="p-4 border-t border-slate-700 bg-slate-800/50">
+        <div className="flex items-center space-x-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-slate-600 flex items-center justify-center border-2 border-slate-500">
+            <UserCircle className="w-6 h-6 text-slate-300" />
+          </div>
+          <div className="overflow-hidden flex-1">
+            <p className="text-sm font-bold text-white truncate">{currentUser.name}</p>
+            <p className="text-[10px] text-blue-400 uppercase tracking-wider font-bold">{currentUser.role}</p>
+          </div>
+        </div>
+
+        <button 
+          onClick={onLogout}
+          className="w-full flex items-center justify-center space-x-2 bg-slate-900 hover:bg-red-900/30 text-slate-400 hover:text-red-400 py-2 rounded-lg border border-slate-700 hover:border-red-900/50 transition-all text-xs font-bold uppercase tracking-wider"
+        >
+          <LogOut className="w-4 h-4" />
+          <span>Wyloguj</span>
+        </button>
+      </div>
+    </div>
+  );
+};
