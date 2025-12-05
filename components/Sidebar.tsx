@@ -1,5 +1,6 @@
+
 import React from 'react';
-import { LayoutDashboard, Users, Wrench, Package, Sun, Grid, UserCircle, Briefcase, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, Wrench, Package, Sun, Grid, UserCircle, Briefcase, LogOut, X } from 'lucide-react';
 import { ViewState, User, UserRole } from '../types';
 
 interface SidebarProps {
@@ -7,9 +8,11 @@ interface SidebarProps {
   onChangeView: (view: ViewState) => void;
   currentUser: User;
   onLogout: () => void;
+  isOpen: boolean;
+  onClose: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, currentUser, onLogout }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, currentUser, onLogout, isOpen, onClose }) => {
   
   // Define permission logic
   const canAccess = (role: UserRole, view: ViewState): boolean => {
@@ -39,10 +42,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, cur
   const visibleMenuItems = menuItems.filter(item => canAccess(currentUser.role, item.id as ViewState));
 
   return (
-    <div className="w-64 bg-slate-900 text-white flex flex-col h-full shadow-xl">
-      <div className="p-6 flex items-center space-x-3 border-b border-slate-700">
-        <Sun className="text-yellow-400 w-8 h-8" />
-        <h1 className="text-xl font-bold tracking-wider">Family CRM</h1>
+    <div className={`
+      fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-white flex flex-col h-full shadow-xl transition-transform duration-300 transform 
+      ${isOpen ? 'translate-x-0' : '-translate-x-full'} 
+      md:relative md:translate-x-0
+    `}>
+      <div className="p-6 flex items-center justify-between border-b border-slate-700">
+        <div className="flex items-center space-x-3">
+          <Sun className="text-yellow-400 w-8 h-8" />
+          <h1 className="text-xl font-bold tracking-wider">Family CRM</h1>
+        </div>
+        <button onClick={onClose} className="md:hidden text-slate-400 hover:text-white">
+          <X className="w-6 h-6" />
+        </button>
       </div>
       
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto">

@@ -63,6 +63,7 @@ export interface UploadedFile {
   name: string;
   type: string;
   dateUploaded: string;
+  url?: string; // Preview URL for images
 }
 
 export type RoofType = 'DACHOWKA' | 'BLACHA' | 'PLASKI' | 'GRUNT';
@@ -151,6 +152,7 @@ export interface PaymentEntry {
   date: string;
   amount: number;
   recordedBy: string; // Name of the user who added it
+  comment?: string; // Optional description (e.g. Zaliczka)
 }
 
 export interface Installation {

@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Customer, Installation, InstallationStatus, UploadedFile, Offer, UserRole, PaymentEntry } from '../types';
-import { Search, Mail, Phone, MapPin, Plus, Save, Zap, File as FileIcon, Camera, Image as ImageIcon, ClipboardList, User, FilePieChart, ExternalLink, Banknote, History, Calendar, Check, CheckCircle, Battery, Upload, Trash2, Users, FileText, Hammer, X, Shovel } from 'lucide-react';
+import { Search, Phone, MapPin, Plus, Save, Zap, File as FileIcon, Camera, Image as ImageIcon, ClipboardList, User, FilePieChart, Banknote, History, Check, CheckCircle, Upload, Trash2, Users, FileText, Hammer, X, Shovel, ArrowLeft, Download, Maximize2 } from 'lucide-react';
 import { generateCustomerEmail } from '../services/geminiService';
 import { NotificationType } from './Notification';
 
@@ -57,7 +57,6 @@ export const Customers: React.FC<CustomersProps> = ({
     voivodeship: ''
   });
 
-  // Detailed Address State (for Editing)
   const [addressDetails, setAddressDetails] = useState({
     street: '',
     zip: '',
@@ -69,11 +68,17 @@ export const Customers: React.FC<CustomersProps> = ({
   const [aiDraft, setAiDraft] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // Payment Form State
+  // Finances State
   const [newPaymentAmount, setNewPaymentAmount] = useState<number>(0);
   const [newPaymentDate, setNewPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [newPaymentComment, setNewPaymentComment] = useState('');
 
-  // Permission Logic
+  // Audit State
+  const [photoDescription, setPhotoDescription] = useState('');
+  const [selectedImage, setSelectedImage] = useState<UploadedFile | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const auditInputRef = useRef<HTMLInputElement>(null);
+
   const canEditStatus = currentUserRole === UserRole.ADMIN || currentUserRole === UserRole.OFFICE;
   const canEditFinances = currentUserRole === UserRole.ADMIN || currentUserRole === UserRole.OFFICE;
   const canAcceptOffer = currentUserRole === UserRole.ADMIN || currentUserRole === UserRole.OFFICE || currentUserRole === UserRole.SALES;
@@ -86,22 +91,17 @@ export const Customers: React.FC<CustomersProps> = ({
 
   const selectedInstallation = installations.find(i => i.customerId === selectedCustomerId);
   
-  // Find accepted offer for technical details
   const acceptedOffer = editForm?.offers?.find(o => o.status === 'ACCEPTED');
 
-  // Sync editForm with selected customer
   useEffect(() => {
     if (selectedCustomerId) {
       const customer = customers.find(c => c.id === selectedCustomerId);
       if (customer) {
         setEditForm({ ...customer });
         
-        // Try to parse existing address string to pre-fill detailed fields
-        // Simple heuristic: Street, Zip City, County, Voivodeship
         const parts = customer.address.split(',').map(s => s.trim());
         if (parts.length >= 1) setAddressDetails(prev => ({ ...prev, street: parts[0] }));
         if (parts.length >= 2) {
-           // Try to split zip and city
            const zipCity = parts[1];
            const zipMatch = zipCity.match(/\d{2}-\d{3}/);
            if (zipMatch) {
@@ -113,7 +113,6 @@ export const Customers: React.FC<CustomersProps> = ({
         if (parts.length >= 3) setAddressDetails(prev => ({ ...prev, county: parts[2] }));
         if (parts.length >= 4) setAddressDetails(prev => ({ ...prev, voivodeship: parts[3] }));
 
-        // Only clear AI draft when switching customers
         if (editForm?.id !== customer.id) {
            setAiDraft(null);
         }
@@ -143,7 +142,6 @@ export const Customers: React.FC<CustomersProps> = ({
   const handleAddressDetailChange = (field: string, value: string) => {
     setAddressDetails(prev => {
         const updated = { ...prev, [field]: value };
-        // Auto-update the main string
         const fullAddress = `${updated.street}, ${updated.zip} ${updated.city}, ${updated.county}, ${updated.voivodeship}`;
         if (editForm) {
             setEditForm({ ...editForm, address: fullAddress });
@@ -177,37 +175,45 @@ export const Customers: React.FC<CustomersProps> = ({
       id: Date.now().toString(),
       date: newPaymentDate,
       amount: newPaymentAmount,
-      recordedBy: currentUserName
+      recordedBy: currentUserName,
+      comment: newPaymentComment
     };
 
     onAddPayment(selectedInstallation.id, payment);
     setNewPaymentAmount(0);
+    setNewPaymentComment('');
     onShowNotification("Dodano nową wpłatę");
   };
 
-  const handleFileUpload = (type: 'doc' | 'audit') => {
-    if (editForm) {
-      const newFile: UploadedFile = {
-        id: Date.now().toString(),
-        name: type === 'audit' ? `Zdjecie_Audyt_${Date.now()}.jpg` : `Dokument_${new Date().toLocaleDateString()}.pdf`,
-        type: type === 'audit' ? 'image/jpeg' : 'application/pdf',
-        dateUploaded: new Date().toISOString().split('T')[0]
-      };
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'doc' | 'audit') => {
+    if (e.target.files && e.target.files[0] && editForm) {
+        const file = e.target.files[0];
+        
+        // Create a temporary URL for immediate preview
+        const fileUrl = URL.createObjectURL(file);
 
-      let updatedCustomer = { ...editForm };
-      
-      if (type === 'audit') {
-        const updatedPhotos = [...(editForm.auditPhotos || []), newFile];
-        updatedCustomer.auditPhotos = updatedPhotos;
-        onShowNotification("Dodano zdjęcie do audytu");
-      } else {
-        const updatedFiles = [...(editForm.files || []), newFile];
-        updatedCustomer.files = updatedFiles;
-        onShowNotification("Dodano nowy plik");
-      }
-      
-      setEditForm(updatedCustomer);
-      onUpdateCustomer(updatedCustomer); 
+        const newFile: UploadedFile = {
+            id: Date.now().toString(),
+            name: type === 'audit' && photoDescription ? photoDescription : file.name,
+            type: file.type,
+            dateUploaded: new Date().toISOString().split('T')[0],
+            url: fileUrl // Store the blob URL
+        };
+
+        let updatedCustomer = { ...editForm };
+        if (type === 'audit') {
+            const updatedPhotos = [...(editForm.auditPhotos || []), newFile];
+            updatedCustomer.auditPhotos = updatedPhotos;
+            onShowNotification("Dodano zdjęcie do audytu");
+            setPhotoDescription(''); // Reset description
+        } else {
+            const updatedFiles = [...(editForm.files || []), newFile];
+            updatedCustomer.files = updatedFiles;
+            onShowNotification("Dodano nowy plik");
+        }
+
+        setEditForm(updatedCustomer);
+        onUpdateCustomer(updatedCustomer);
     }
   };
 
@@ -227,13 +233,27 @@ export const Customers: React.FC<CustomersProps> = ({
     }
   };
 
+  const handleDownloadFile = (file: UploadedFile) => {
+    if (!file.url) {
+        // Fallback if no URL (e.g. historical data mock), just alert
+        onShowNotification("Brak URL do pobrania (tryb demo)", 'info');
+        return;
+    }
+    const link = document.createElement('a');
+    link.href = file.url;
+    link.download = file.name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleOfferAcceptClick = async (e: React.MouseEvent, customerId: string, offerId: string) => {
     e.preventDefault();
     e.stopPropagation();
     try {
       await onAcceptOffer(customerId, offerId);
       onShowNotification("Pomyślnie zaakceptowano ofertę. Dane zostały zaktualizowane.");
-      setActiveTab('data'); // Switch to main tab AFTER update is confirmed
+      setActiveTab('data');
     } catch (error) {
       onShowNotification("Wystąpił błąd podczas akceptacji oferty", 'error');
     }
@@ -263,8 +283,11 @@ export const Customers: React.FC<CustomersProps> = ({
   return (
     <div className="flex h-full animate-fade-in bg-white shadow-sm border-r border-slate-200">
       
-      {/* Sidebar List */}
-      <div className="w-80 border-r border-slate-200 bg-slate-50 flex flex-col h-full">
+      {/* Customer List Column (Hidden on mobile if customer selected) */}
+      <div className={`
+         w-full md:w-80 border-r border-slate-200 bg-slate-50 flex-col h-full
+         ${selectedCustomerId ? 'hidden md:flex' : 'flex'}
+      `}>
         <div className="p-4 border-b border-slate-200 bg-white">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
@@ -315,31 +338,42 @@ export const Customers: React.FC<CustomersProps> = ({
         </button>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+      {/* Main Content (Hidden on mobile if no customer selected) */}
+      <div className={`
+         flex-1 flex-col h-full overflow-hidden bg-slate-50
+         ${selectedCustomerId ? 'flex' : 'hidden md:flex'}
+      `}>
         {selectedCustomerId && editForm ? (
           <>
             {/* Header */}
-            <div className="bg-white border-b border-slate-200 p-6 shadow-sm flex justify-between items-start">
-              <div>
-                <h2 className="text-2xl font-bold text-slate-800 flex items-center">
-                  <User className="w-6 h-6 mr-3 text-slate-400" />
-                  {editForm.name}
-                </h2>
-                <p className="text-slate-500 text-sm mt-1 ml-9">{editForm.address}</p>
+            <div className="bg-white border-b border-slate-200 p-4 md:p-6 shadow-sm flex flex-col md:flex-row justify-between items-start gap-4">
+              <div className="flex items-start">
+                <button 
+                  onClick={() => setSelectedCustomerId(null)}
+                  className="mr-3 mt-1 md:hidden text-slate-500"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+                <div>
+                  <h2 className="text-xl md:text-2xl font-bold text-slate-800 flex items-center">
+                    <User className="w-5 h-5 md:w-6 md:h-6 mr-3 text-slate-400" />
+                    {editForm.name}
+                  </h2>
+                  <p className="text-slate-500 text-sm mt-1 ml-0 md:ml-9 truncate max-w-xs md:max-w-md">{editForm.address}</p>
+                </div>
               </div>
               <button 
                 onClick={handleSaveCustomer}
-                className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-sm transition-colors text-sm font-bold"
+                className="w-full md:w-auto flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-sm transition-colors text-sm font-bold"
               >
                 <Save className="w-4 h-4 mr-2" /> Zapisz zmiany
               </button>
             </div>
 
             {/* Tabs */}
-            <div className="bg-white border-b border-slate-200 px-6 flex space-x-6">
+            <div className="bg-white border-b border-slate-200 px-4 md:px-6 flex overflow-x-auto space-x-6 hide-scrollbar">
                {[
-                 { id: 'data', label: 'Dane Klienta', icon: User },
+                 { id: 'data', label: 'Dane', icon: User },
                  { id: 'offers', label: 'Oferty', icon: FilePieChart },
                  { id: 'audit', label: 'Audyt', icon: Camera },
                  { id: 'finances', label: 'Finanse', icon: Banknote },
@@ -349,7 +383,7 @@ export const Customers: React.FC<CustomersProps> = ({
                  <button
                    key={tab.id}
                    onClick={() => setActiveTab(tab.id as TabType)}
-                   className={`flex items-center py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+                   className={`flex-shrink-0 flex items-center py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
                  >
                    <tab.icon className="w-4 h-4 mr-2" />
                    {tab.label}
@@ -358,14 +392,14 @@ export const Customers: React.FC<CustomersProps> = ({
             </div>
 
             {/* Tab Content */}
-            <div className="flex-1 overflow-y-auto p-8">
+            <div className="flex-1 overflow-y-auto p-4 md:p-8">
                
                {/* TAB: DATA */}
                {activeTab === 'data' && (
-                 <div className="max-w-6xl space-y-8 animate-fade-in">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                          <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
+                 <div className="max-w-6xl space-y-6 md:space-y-8 animate-fade-in">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
+                       <div className="bg-white p-5 md:p-6 rounded-xl shadow-sm border border-slate-200">
+                          <h3 className="text-base md:text-lg font-bold text-slate-800 mb-4 flex items-center">
                             <User className="w-5 h-5 mr-2 text-slate-400" /> Dane Kontaktowe
                           </h3>
                           <div className="space-y-4">
@@ -399,8 +433,8 @@ export const Customers: React.FC<CustomersProps> = ({
                              
                              <div className="pt-4 border-t border-slate-100">
                                <p className="text-xs font-bold text-slate-500 uppercase mb-3">Adres Inwestycji</p>
-                               <div className="grid grid-cols-2 gap-3">
-                                  <div className="col-span-2">
+                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                  <div className="col-span-1 sm:col-span-2">
                                      <input type="text" placeholder="Ulica i numer" value={addressDetails.street} onChange={(e) => handleAddressDetailChange('street', e.target.value)} className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                                   </div>
                                   <div>
@@ -420,8 +454,8 @@ export const Customers: React.FC<CustomersProps> = ({
                           </div>
                        </div>
 
-                       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                          <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
+                       <div className="bg-white p-5 md:p-6 rounded-xl shadow-sm border border-slate-200">
+                          <h3 className="text-base md:text-lg font-bold text-slate-800 mb-4 flex items-center">
                             <Zap className="w-5 h-5 mr-2 text-amber-500" /> Szczegóły Instalacji
                           </h3>
                           {selectedInstallation ? (
@@ -502,15 +536,14 @@ export const Customers: React.FC<CustomersProps> = ({
                        </div>
                     </div>
 
-                    {/* Technical Calculator Details Preview */}
                     {acceptedOffer && (
-                       <div className="bg-slate-50 border border-slate-200 rounded-xl p-6">
+                       <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 md:p-6">
                           <h3 className="font-bold text-slate-700 mb-4 flex items-center">
                              <Hammer className="w-5 h-5 mr-2 text-slate-500" /> Dane Techniczne z Kalkulatora
                           </h3>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
                              <div className="flex items-center space-x-3 bg-white p-3 rounded-lg border border-slate-200">
-                                <div className="bg-amber-50 p-2 rounded-lg text-amber-600"><Hammer className="w-5 h-5" /></div>
+                                <div className="bg-amber-50 p-2 rounded-lg text-amber-600 shrink-0"><Hammer className="w-5 h-5" /></div>
                                 <div>
                                    <p className="text-xs text-slate-500 uppercase font-bold">Typ Montażu</p>
                                    <p className="font-bold text-slate-800">{acceptedOffer.calculatorState.roofType}</p>
@@ -518,7 +551,7 @@ export const Customers: React.FC<CustomersProps> = ({
                              </div>
                              {acceptedOffer.calculatorState.roofType === 'GRUNT' && (
                                 <div className="flex items-center space-x-3 bg-white p-3 rounded-lg border border-slate-200">
-                                   <div className="bg-green-50 p-2 rounded-lg text-green-600"><Shovel className="w-5 h-5" /></div>
+                                   <div className="bg-green-50 p-2 rounded-lg text-green-600 shrink-0"><Shovel className="w-5 h-5" /></div>
                                    <div>
                                       <p className="text-xs text-slate-500 uppercase font-bold">Długość Przekopu</p>
                                       <p className="font-bold text-slate-800">{acceptedOffer.calculatorState.trenchLength} mb</p>
@@ -526,175 +559,17 @@ export const Customers: React.FC<CustomersProps> = ({
                                 </div>
                              )}
                              <div className="flex items-center space-x-3 bg-white p-3 rounded-lg border border-slate-200">
-                                <div className="bg-blue-50 p-2 rounded-lg text-blue-600"><Zap className="w-5 h-5" /></div>
+                                <div className="bg-blue-50 p-2 rounded-lg text-blue-600 shrink-0"><Zap className="w-5 h-5" /></div>
                                 <div>
                                    <p className="text-xs text-slate-500 uppercase font-bold">Konfiguracja</p>
-                                   <p className="font-bold text-slate-800">
-                                      {acceptedOffer.calculatorState.panelCount}x PV + {acceptedOffer.calculatorState.storageId ? 'Magazyn' : 'Brak Magazynu'}
+                                   <p className="font-bold text-slate-800 text-sm">
+                                      {acceptedOffer.calculatorState.panelCount}x PV + {acceptedOffer.calculatorState.storageId ? 'Bat' : 'Brak Bat'}
                                    </p>
                                 </div>
                              </div>
                           </div>
                        </div>
                     )}
-                 </div>
-               )}
-
-               {/* TAB: OFFERS */}
-               {activeTab === 'offers' && (
-                 <div className="max-w-4xl space-y-6 animate-fade-in">
-                    <div className="flex justify-between items-center mb-4">
-                       <h3 className="text-lg font-bold text-slate-800">Zapisane Oferty</h3>
-                       <button className="text-sm text-blue-600 font-medium hover:underline flex items-center">
-                          <Plus className="w-4 h-4 mr-1" /> Utwórz nową w Kalkulatorze
-                       </button>
-                    </div>
-
-                    {editForm.offers && editForm.offers.length > 0 ? (
-                      <div className="grid gap-4">
-                        {editForm.offers.map((offer) => (
-                          <div key={offer.id} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-center group hover:border-blue-200 transition-all">
-                             <div className="mb-4 md:mb-0">
-                                <div className="flex items-center space-x-3">
-                                   <div className="p-2 bg-amber-50 rounded-lg text-amber-600">
-                                      <FileText className="w-6 h-6" />
-                                   </div>
-                                   <div>
-                                      <h4 className="font-bold text-slate-800 text-lg">{offer.name}</h4>
-                                      <p className="text-xs text-slate-500">Utworzono: {new Date(offer.dateCreated).toLocaleDateString()}</p>
-                                   </div>
-                                </div>
-                                <div className="mt-3 flex items-center space-x-4 text-sm text-slate-600">
-                                   <span className="flex items-center"><Zap className="w-4 h-4 mr-1 text-slate-400"/> {offer.calculatorState.panelCount}x Panele</span>
-                                   <span className="flex items-center"><Battery className="w-4 h-4 mr-1 text-slate-400"/> {offer.calculatorState.storageId ? 'Z magazynem' : 'Bez magazynu'}</span>
-                                </div>
-                             </div>
-                             
-                             <div className="flex flex-col items-end space-y-3 w-full md:w-auto">
-                                <p className="text-2xl font-bold text-slate-900">{offer.finalPrice.toLocaleString('pl-PL', {maximumFractionDigits: 0})} zł</p>
-                                <div className="flex space-x-2 w-full md:w-auto">
-                                   <button 
-                                     onClick={() => onEditOffer(offer)}
-                                     className="flex-1 md:flex-none px-4 py-2 border border-slate-300 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm"
-                                   >
-                                      Podgląd / Edycja
-                                   </button>
-                                   {offer.status !== 'ACCEPTED' ? (
-                                     canAcceptOffer && (
-                                       <button 
-                                         onClick={(e) => handleOfferAcceptClick(e, editForm.id, offer.id)}
-                                         className="flex-1 md:flex-none px-4 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition-colors shadow-sm text-sm flex items-center justify-center"
-                                       >
-                                          <Check className="w-4 h-4 mr-2" /> Zaakceptuj
-                                       </button>
-                                     )
-                                   ) : (
-                                     <span className="flex items-center text-green-600 font-bold bg-green-50 px-3 py-2 rounded-lg text-sm border border-green-100">
-                                       <CheckCircle className="w-4 h-4 mr-2" /> Zaakceptowana
-                                     </span>
-                                   )}
-                                </div>
-                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl p-12 text-center">
-                          <FilePieChart className="w-12 h-12 text-slate-300 mx-auto mb-2" />
-                          <p className="text-slate-500">Brak zapisanych ofert dla tego klienta.</p>
-                          <p className="text-xs text-slate-400 mt-1">Użyj "Aplikacja &gt; Kalkulator PV", aby stworzyć nową ofertę.</p>
-                      </div>
-                    )}
-                 </div>
-               )}
-
-               {/* TAB: AUDIT */}
-               {activeTab === 'audit' && (
-                 <div className="space-y-6 animate-fade-in">
-                    <div className="flex justify-between items-center">
-                       <h3 className="text-lg font-bold text-slate-800">Dokumentacja Zdjęciowa</h3>
-                       <label className="bg-blue-600 text-white px-4 py-2 rounded-lg cursor-pointer hover:bg-blue-700 transition-colors flex items-center shadow-sm text-sm font-bold">
-                          <Camera className="w-4 h-4 mr-2" /> Dodaj Zdjęcie
-                          <input type="file" accept="image/*" className="hidden" onChange={() => handleFileUpload('audit')} />
-                       </label>
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                       {editForm.auditPhotos && editForm.auditPhotos.length > 0 ? (
-                         editForm.auditPhotos.map(photo => (
-                           <div key={photo.id} className="group relative aspect-square bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-sm">
-                              <div className="absolute inset-0 flex items-center justify-center text-slate-400 bg-slate-200">
-                                 <ImageIcon className="w-8 h-8" />
-                              </div>
-                              {/* Mock Image Content */}
-                              <div className="absolute bottom-0 left-0 right-0 bg-black/60 p-2">
-                                 <p className="text-white text-xs truncate">{photo.name}</p>
-                              </div>
-                              <button 
-                                onClick={() => handleDeleteFile(photo.id, 'audit')}
-                                className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
-                              >
-                                 <Trash2 className="w-4 h-4" />
-                              </button>
-                           </div>
-                         ))
-                       ) : (
-                         <div className="col-span-full py-12 text-center text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-xl">
-                            <Camera className="w-12 h-12 mx-auto mb-2 opacity-20" />
-                            <p>Brak zdjęć z audytu.</p>
-                         </div>
-                       )}
-                    </div>
-                 </div>
-               )}
-
-               {/* TAB: FILES */}
-               {activeTab === 'files' && (
-                 <div className="space-y-6 animate-fade-in">
-                    <div className="flex justify-between items-center">
-                       <h3 className="text-lg font-bold text-slate-800">Pliki i Dokumenty</h3>
-                       <label className="bg-blue-600 text-white px-4 py-2 rounded-lg cursor-pointer hover:bg-blue-700 transition-colors flex items-center shadow-sm text-sm font-bold">
-                          <Upload className="w-4 h-4 mr-2" /> Wgraj Plik
-                          <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={() => handleFileUpload('doc')} />
-                       </label>
-                    </div>
-
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                       {editForm.files && editForm.files.length > 0 ? (
-                         <table className="w-full text-left text-sm">
-                            <thead className="bg-slate-50 text-slate-500 font-bold">
-                               <tr>
-                                  <th className="p-4">Nazwa Pliku</th>
-                                  <th className="p-4">Data</th>
-                                  <th className="p-4 text-right">Akcje</th>
-                               </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                               {editForm.files.map(file => (
-                                 <tr key={file.id} className="hover:bg-slate-50">
-                                    <td className="p-4 font-medium text-slate-700 flex items-center">
-                                       <FileIcon className="w-4 h-4 mr-3 text-blue-500" /> {file.name}
-                                    </td>
-                                    <td className="p-4 text-slate-500">{file.dateUploaded}</td>
-                                    <td className="p-4 text-right">
-                                       <button 
-                                         onClick={() => handleDeleteFile(file.id, 'doc')}
-                                         className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded transition-colors"
-                                       >
-                                          <Trash2 className="w-4 h-4" />
-                                       </button>
-                                    </td>
-                                 </tr>
-                               ))}
-                            </tbody>
-                         </table>
-                       ) : (
-                         <div className="p-12 text-center text-slate-400">
-                            <FileIcon className="w-12 h-12 mx-auto mb-2 opacity-20" />
-                            <p>Brak wgranych dokumentów.</p>
-                         </div>
-                       )}
-                    </div>
                  </div>
                )}
 
@@ -716,97 +591,91 @@ export const Customers: React.FC<CustomersProps> = ({
                         </div>
                      </div>
 
-                     {/* Progress Bar */}
-                     <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                        <div className="flex justify-between items-center mb-2">
-                           <span className="font-bold text-slate-700">Postęp Płatności</span>
-                           <span className="font-bold text-blue-600">{selectedInstallation.price > 0 ? ((selectedInstallation.paidAmount / selectedInstallation.price) * 100).toFixed(0) : 0}%</span>
-                        </div>
-                        <div className="w-full bg-slate-100 rounded-full h-4 overflow-hidden">
-                           <div 
-                             className="bg-gradient-to-r from-blue-500 to-blue-600 h-full rounded-full transition-all duration-1000"
-                             style={{width: `${selectedInstallation.price > 0 ? (selectedInstallation.paidAmount / selectedInstallation.price) * 100 : 0}%`}}
-                           ></div>
-                        </div>
-                     </div>
-
-                     {/* Payment History Table */}
+                     {/* Payment History */}
                      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                        <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                            <h3 className="font-bold text-slate-800 flex items-center">
-                              <History className="w-4 h-4 mr-2" /> Historia Wpłat
+                              <History className="w-5 h-5 mr-2 text-slate-500" /> Historia Płatności
                            </h3>
                         </div>
-                        
-                        {selectedInstallation.paymentHistory && selectedInstallation.paymentHistory.length > 0 ? (
-                           <table className="w-full text-left text-sm">
-                              <thead className="bg-slate-50 text-slate-500 font-bold">
-                                 <tr>
-                                    <th className="p-4">Data</th>
-                                    <th className="p-4">Kwota</th>
-                                    <th className="p-4">Zaksięgował</th>
-                                    {canEditFinances && <th className="p-4 text-right">Akcje</th>}
-                                 </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-100">
-                                 {selectedInstallation.paymentHistory.map(payment => (
-                                    <tr key={payment.id} className="hover:bg-slate-50">
-                                       <td className="p-4 font-medium text-slate-700">{payment.date}</td>
-                                       <td className="p-4 font-bold text-green-600">+{payment.amount.toLocaleString()} PLN</td>
-                                       <td className="p-4 text-slate-500 flex items-center">
-                                          <User className="w-3 h-3 mr-1" /> {payment.recordedBy}
-                                       </td>
-                                       {canEditFinances && (
-                                          <td className="p-4 text-right">
-                                             <button 
-                                               onClick={() => onRemovePayment(selectedInstallation.id, payment.id)}
-                                               className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded transition-colors"
-                                             >
-                                                <Trash2 className="w-4 h-4" />
-                                             </button>
-                                          </td>
-                                       )}
-                                    </tr>
-                                 ))}
-                              </tbody>
-                           </table>
-                        ) : (
-                           <div className="p-8 text-center text-slate-400">Brak historii wpłat.</div>
-                        )}
+                        <table className="w-full text-left text-sm">
+                           <thead className="bg-slate-50 text-slate-500 uppercase text-xs">
+                              <tr>
+                                 <th className="p-4">Data</th>
+                                 <th className="p-4">Kwota</th>
+                                 <th className="p-4">Opis</th>
+                                 <th className="p-4">Zaksięgował</th>
+                                 <th className="p-4 text-right">Akcje</th>
+                              </tr>
+                           </thead>
+                           <tbody className="divide-y divide-slate-100">
+                              {selectedInstallation.paymentHistory && selectedInstallation.paymentHistory.length > 0 ? (
+                                selectedInstallation.paymentHistory.map(payment => (
+                                  <tr key={payment.id}>
+                                     <td className="p-4 font-medium">{payment.date}</td>
+                                     <td className="p-4 text-green-600 font-bold">+{payment.amount.toLocaleString()} PLN</td>
+                                     <td className="p-4 text-slate-600">{payment.comment || '-'}</td>
+                                     <td className="p-4 text-slate-500">{payment.recordedBy}</td>
+                                     <td className="p-4 text-right">
+                                        {canEditFinances && (
+                                           <button onClick={() => onRemovePayment(selectedInstallation.id, payment.id)} className="text-red-400 hover:text-red-600 transition-colors">
+                                              <Trash2 className="w-4 h-4" />
+                                           </button>
+                                        )}
+                                     </td>
+                                  </tr>
+                                ))
+                              ) : (
+                                <tr>
+                                   <td colSpan={5} className="p-6 text-center text-slate-400">Brak zaksięgowanych wpłat.</td>
+                                </tr>
+                              )}
+                           </tbody>
+                        </table>
                      </div>
 
                      {/* Add Payment Form */}
                      {canEditFinances && (
-                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                           <h3 className="font-bold text-slate-800 mb-4 flex items-center">
-                              <Plus className="w-4 h-4 mr-2" /> Dodaj Nową Wpłatę
+                        <div className="bg-blue-50/50 p-6 rounded-xl border border-blue-100">
+                           <h3 className="font-bold text-blue-900 mb-4 flex items-center">
+                              <Plus className="w-5 h-5 mr-2" /> Dodaj nową wpłatę
                            </h3>
-                           <div className="flex items-end space-x-4">
-                              <div className="flex-1">
-                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Kwota (PLN)</label>
+                           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                              <div className="col-span-1 md:col-span-1">
+                                 <label className="block text-xs font-bold text-blue-800/60 uppercase mb-1">Kwota (PLN)</label>
                                  <input 
-                                   type="number" 
-                                   value={newPaymentAmount}
-                                   onChange={(e) => setNewPaymentAmount(Number(e.target.value))}
-                                   className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
-                                   placeholder="0.00"
+                                    type="number" 
+                                    value={newPaymentAmount} 
+                                    onChange={(e) => setNewPaymentAmount(Number(e.target.value))}
+                                    className="w-full p-3 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder="0"
                                  />
                               </div>
-                              <div className="flex-1">
-                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Data Wpływu</label>
+                              <div className="col-span-1 md:col-span-1">
+                                 <label className="block text-xs font-bold text-blue-800/60 uppercase mb-1">Data</label>
                                  <input 
-                                   type="date" 
-                                   value={newPaymentDate}
-                                   onChange={(e) => setNewPaymentDate(e.target.value)}
-                                   className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+                                    type="date" 
+                                    value={newPaymentDate} 
+                                    onChange={(e) => setNewPaymentDate(e.target.value)}
+                                    className="w-full p-3 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                 />
+                              </div>
+                              <div className="col-span-1 md:col-span-1">
+                                 <label className="block text-xs font-bold text-blue-800/60 uppercase mb-1">Tytuł/Komentarz</label>
+                                 <input 
+                                    type="text" 
+                                    value={newPaymentComment} 
+                                    onChange={(e) => setNewPaymentComment(e.target.value)}
+                                    className="w-full p-3 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder="np. Zaliczka"
                                  />
                               </div>
                               <button 
-                                onClick={handlePaymentSubmit}
-                                disabled={newPaymentAmount <= 0}
-                                className="px-6 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-md transition-colors disabled:opacity-50"
+                                 onClick={handlePaymentSubmit}
+                                 disabled={newPaymentAmount <= 0}
+                                 className="w-full md:w-auto px-6 py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               >
-                                 Dodaj Wpłatę
+                                 Dodaj
                               </button>
                            </div>
                         </div>
@@ -814,70 +683,266 @@ export const Customers: React.FC<CustomersProps> = ({
                   </div>
                )}
 
-               {/* TAB: NOTES */}
-               {activeTab === 'notes' && (
-                  <div className="max-w-4xl space-y-6 animate-fade-in">
-                     <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                        <h3 className="text-lg font-bold text-slate-800 mb-4">Notatki Wewnętrzne</h3>
-                        <textarea 
-                           value={editForm.notes}
-                           onChange={(e) => handleInputChange('notes', e.target.value)}
-                           className="w-full h-40 p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none resize-none text-slate-700"
-                           placeholder="Wpisz notatki dotyczące klienta..."
-                        />
-                        <div className="mt-4 flex justify-end">
-                           <button onClick={handleSaveCustomer} className="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 font-medium">Zapisz notatkę</button>
-                        </div>
-                     </div>
+               {/* TAB: OFFERS */}
+               {activeTab === 'offers' && (
+                 <div className="max-w-4xl space-y-6 animate-fade-in">
+                    <div className="flex justify-between items-center mb-4">
+                       <h3 className="text-lg font-bold text-slate-800">Zapisane Oferty</h3>
+                       <button className="text-sm text-blue-600 font-medium hover:underline flex items-center">
+                          <Plus className="w-4 h-4 mr-1" /> Utwórz nową
+                       </button>
+                    </div>
 
-                     <div className="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-xl p-6 text-white shadow-lg relative overflow-hidden">
-                        <div className="relative z-10">
-                           <h3 className="text-lg font-bold flex items-center mb-2">
-                              <Zap className="w-5 h-5 mr-2 text-yellow-400" /> Asystent AI - Generator Wiadomości
-                           </h3>
-                           <p className="text-indigo-100 text-sm mb-4 max-w-lg">
-                              Wygeneruj profesjonalną wiadomość email do klienta informującą o aktualnym etapie prac.
-                           </p>
-                           
-                           {!aiDraft ? (
-                             <button 
-                               onClick={handleGenerateEmail}
-                               disabled={isGenerating || !selectedInstallation}
-                               className="bg-white text-indigo-600 px-6 py-2.5 rounded-lg font-bold shadow-md hover:bg-indigo-50 transition-colors disabled:opacity-70 flex items-center"
-                             >
-                               {isGenerating ? 'Generowanie...' : 'Generuj treść maila'}
-                             </button>
-                           ) : (
-                             <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20 animate-fade-in">
-                                <h4 className="font-bold text-xs uppercase text-indigo-200 mb-2">Propozycja treści:</h4>
-                                <p className="text-sm whitespace-pre-line leading-relaxed mb-4">{aiDraft}</p>
-                                <div className="flex space-x-3">
-                                   <button 
-                                     onClick={() => {navigator.clipboard.writeText(aiDraft); onShowNotification("Skopiowano do schowka");}}
-                                     className="bg-white text-indigo-600 px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-50"
-                                   >
-                                      Kopiuj
-                                   </button>
-                                   <button 
-                                     onClick={() => setAiDraft(null)}
-                                     className="text-indigo-200 hover:text-white px-4 py-2 text-xs font-medium"
-                                   >
-                                      Odrzuć
-                                   </button>
+                    {editForm.offers && editForm.offers.length > 0 ? (
+                      <div className="grid gap-4">
+                        {editForm.offers.map((offer) => (
+                          <div key={offer.id} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-center group hover:border-blue-200 transition-all">
+                             <div className="mb-4 md:mb-0 w-full md:w-auto">
+                                <div className="flex items-center space-x-3">
+                                   <div className="p-2 bg-amber-50 rounded-lg text-amber-600">
+                                      <FileText className="w-6 h-6" />
+                                   </div>
+                                   <div>
+                                      <h4 className="font-bold text-slate-800 text-lg">{offer.name}</h4>
+                                      <p className="text-xs text-slate-500">Utworzono: {new Date(offer.dateCreated).toLocaleDateString()}</p>
+                                   </div>
                                 </div>
                              </div>
-                           )}
+                             
+                             <div className="flex flex-col items-end space-y-3 w-full md:w-auto">
+                                <p className="text-2xl font-bold text-slate-900 self-end md:self-auto">{offer.finalPrice.toLocaleString('pl-PL', {maximumFractionDigits: 0})} zł</p>
+                                <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 w-full md:w-auto">
+                                   <button 
+                                     onClick={() => onEditOffer(offer)}
+                                     className="flex-1 md:flex-none px-4 py-2 border border-slate-300 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm"
+                                   >
+                                      Podgląd / Edycja
+                                   </button>
+                                   {offer.status !== 'ACCEPTED' ? (
+                                     canAcceptOffer && (
+                                       <button 
+                                         onClick={(e) => handleOfferAcceptClick(e, editForm.id, offer.id)}
+                                         className="flex-1 md:flex-none px-4 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition-colors shadow-sm text-sm flex items-center justify-center"
+                                       >
+                                          <Check className="w-4 h-4 mr-2" /> Zaakceptuj
+                                       </button>
+                                     )
+                                   ) : (
+                                     <span className="flex items-center justify-center text-green-600 font-bold bg-green-50 px-3 py-2 rounded-lg text-sm border border-green-100">
+                                       <CheckCircle className="w-4 h-4 mr-2" /> Zaakceptowana
+                                     </span>
+                                   )}
+                                </div>
+                             </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl p-12 text-center">
+                          <FilePieChart className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+                          <p className="text-slate-500">Brak zapisanych ofert dla tego klienta.</p>
+                          <p className="text-xs text-slate-400 mt-1">Użyj "Aplikacja &gt; Kalkulator PV", aby stworzyć nową ofertę.</p>
+                      </div>
+                    )}
+                 </div>
+               )}
+
+               {/* TAB: FILES */}
+               {activeTab === 'files' && (
+                 <div className="animate-fade-in max-w-4xl space-y-6">
+                    <div className="flex justify-between items-center mb-4">
+                       <h3 className="text-lg font-bold text-slate-800">Dokumenty i Pliki</h3>
+                       <div>
+                          <input 
+                             type="file" 
+                             ref={fileInputRef} 
+                             className="hidden" 
+                             onChange={(e) => handleFileChange(e, 'doc')} 
+                          />
+                          <button 
+                             onClick={() => fileInputRef.current?.click()}
+                             className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold text-sm shadow-sm"
+                          >
+                             <Upload className="w-4 h-4 mr-2" /> Dodaj plik
+                          </button>
+                       </div>
+                    </div>
+                    
+                    {editForm.files && editForm.files.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                           {editForm.files.map(file => (
+                              <div key={file.id} className="bg-white p-4 rounded-xl border border-slate-200 flex flex-col justify-between group hover:border-blue-300 transition-colors shadow-sm">
+                                 <div className="flex items-start space-x-3 mb-4">
+                                    <div className="p-2 bg-slate-100 rounded-lg text-slate-600 group-hover:bg-blue-50 group-hover:text-blue-600">
+                                       <FileIcon className="w-6 h-6" />
+                                    </div>
+                                    <div className="overflow-hidden">
+                                       <p className="font-bold text-slate-700 text-sm truncate" title={file.name}>{file.name}</p>
+                                       <p className="text-xs text-slate-400">{file.dateUploaded}</p>
+                                    </div>
+                                 </div>
+                                 <div className="flex justify-end space-x-2 border-t border-slate-50 pt-3">
+                                    <button onClick={() => handleDownloadFile(file)} className="text-slate-400 hover:text-blue-600 p-1">
+                                       <Download className="w-4 h-4" />
+                                    </button>
+                                    <button onClick={() => handleDeleteFile(file.id, 'doc')} className="text-slate-400 hover:text-red-500 p-1">
+                                       <Trash2 className="w-4 h-4" />
+                                    </button>
+                                 </div>
+                              </div>
+                           ))}
                         </div>
-                     </div>
-                  </div>
+                    ) : (
+                        <div className="text-center py-12 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl">
+                           <FileIcon className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                           <p className="text-slate-500 font-medium">Brak plików.</p>
+                           <button onClick={() => fileInputRef.current?.click()} className="text-blue-600 text-sm font-bold hover:underline mt-2">Dodaj pierwszy dokument</button>
+                        </div>
+                    )}
+                 </div>
+               )}
+
+               {/* TAB: AUDIT */}
+               {activeTab === 'audit' && (
+                 <div className="animate-fade-in max-w-4xl space-y-6">
+                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                       <h3 className="font-bold text-slate-800 mb-4 flex items-center">
+                          <Camera className="w-5 h-5 mr-2 text-slate-500" /> Dodaj zdjęcie z audytu
+                       </h3>
+                       <div className="flex flex-col md:flex-row gap-4">
+                          <div className="flex-1">
+                             <input 
+                                type="text" 
+                                placeholder="Opis zdjęcia (np. Skrzynka elektryczna, Dach południe)" 
+                                value={photoDescription}
+                                onChange={(e) => setPhotoDescription(e.target.value)}
+                                className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                             />
+                          </div>
+                          <div>
+                             <input 
+                                type="file" 
+                                ref={auditInputRef} 
+                                accept="image/*"
+                                className="hidden" 
+                                onChange={(e) => handleFileChange(e, 'audit')} 
+                             />
+                             <button 
+                                onClick={() => auditInputRef.current?.click()}
+                                className="w-full md:w-auto px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-bold shadow-sm flex items-center justify-center whitespace-nowrap"
+                             >
+                                <Camera className="w-5 h-5 mr-2" /> Dodaj zdjęcie
+                             </button>
+                          </div>
+                       </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                       {editForm.auditPhotos && editForm.auditPhotos.length > 0 ? (
+                          editForm.auditPhotos.map(photo => (
+                             <div key={photo.id} className="relative group rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-slate-100 flex flex-col">
+                                <div 
+                                  className="aspect-square relative w-full bg-slate-200 flex items-center justify-center cursor-pointer overflow-hidden"
+                                  onClick={() => setSelectedImage(photo)}
+                                >
+                                   {photo.url ? (
+                                     <img src={photo.url} alt={photo.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                   ) : (
+                                     <div className="flex flex-col items-center justify-center text-slate-400">
+                                       <ImageIcon className="w-10 h-10 mb-2" />
+                                       <span className="text-[10px]">Brak podglądu</span>
+                                     </div>
+                                   )}
+                                   
+                                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                      <button 
+                                        onClick={(e) => { e.stopPropagation(); setSelectedImage(photo); }}
+                                        className="p-2 bg-white/90 rounded-full hover:bg-white text-slate-800 shadow-sm"
+                                      >
+                                         <Maximize2 className="w-4 h-4" />
+                                      </button>
+                                      <button 
+                                        onClick={(e) => { e.stopPropagation(); handleDownloadFile(photo); }}
+                                        className="p-2 bg-white/90 rounded-full hover:bg-white text-blue-600 shadow-sm"
+                                      >
+                                         <Download className="w-4 h-4" />
+                                      </button>
+                                      <button 
+                                         onClick={(e) => { e.stopPropagation(); handleDeleteFile(photo.id, 'audit'); }}
+                                         className="p-2 bg-white/90 rounded-full hover:bg-white text-red-500 shadow-sm"
+                                       >
+                                          <Trash2 className="w-4 h-4" />
+                                       </button>
+                                   </div>
+                                </div>
+                                <div className="p-3 bg-white">
+                                   <p className="text-slate-800 text-xs font-bold truncate mb-1">{photo.name}</p>
+                                   <p className="text-slate-400 text-[10px]">{photo.dateUploaded}</p>
+                                </div>
+                             </div>
+                          ))
+                       ) : (
+                          <div className="col-span-full text-center py-12 text-slate-400">
+                             <Camera className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                             <p>Brak zdjęć z audytu.</p>
+                          </div>
+                       )}
+                    </div>
+                 </div>
+               )}
+
+               {/* TAB: NOTES */}
+               {activeTab === 'notes' && (
+                 <div className="animate-fade-in max-w-4xl h-full flex flex-col">
+                    <div className="mb-4">
+                       <h3 className="font-bold text-slate-800 flex items-center">
+                          <ClipboardList className="w-5 h-5 mr-2 text-slate-500" /> Notatki wewnętrzne
+                       </h3>
+                       <p className="text-xs text-slate-500 mt-1">Miejsce na informacje o kliencie, ustalenia telefoniczne itp.</p>
+                    </div>
+                    <textarea 
+                       className="w-full flex-1 min-h-[400px] p-6 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none resize-none shadow-sm text-slate-700 leading-relaxed"
+                       value={editForm.notes}
+                       onChange={(e) => handleInputChange('notes', e.target.value)}
+                       placeholder="Wpisz tutaj notatki..."
+                    />
+                    
+                    {/* AI Assistant for Notes/Emails */}
+                    <div className="mt-6 bg-slate-50 rounded-xl p-6 border border-slate-200">
+                       <div className="flex justify-between items-center mb-4">
+                          <h4 className="font-bold text-slate-700 flex items-center">
+                             <Zap className="w-4 h-4 mr-2 text-amber-500" /> Asystent AI - Generator Wiadomości
+                          </h4>
+                          <button 
+                             onClick={handleGenerateEmail}
+                             disabled={isGenerating || !selectedInstallation}
+                             className="text-xs bg-white border border-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-100 font-bold text-slate-600 disabled:opacity-50"
+                          >
+                             {isGenerating ? 'Generuję...' : 'Generuj email'}
+                          </button>
+                       </div>
+                       {aiDraft && (
+                          <div className="bg-white p-4 rounded-lg border border-slate-200 text-sm text-slate-600 italic">
+                             {aiDraft}
+                             <button 
+                                onClick={() => { navigator.clipboard.writeText(aiDraft); onShowNotification("Skopiowano do schowka"); }}
+                                className="block mt-2 text-blue-600 text-xs font-bold hover:underline"
+                             >
+                                Kopiuj treść
+                             </button>
+                          </div>
+                       )}
+                    </div>
+                 </div>
                )}
 
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-slate-300">
+          <div className="flex-1 flex flex-col items-center justify-center text-slate-300 p-4 text-center">
             <Users className="w-24 h-24 mb-4 opacity-20" />
             <p className="text-lg font-medium text-slate-400">Wybierz klienta z listy</p>
+            <p className="md:hidden text-sm mt-2 text-slate-300">Użyj menu aby wrócić do listy.</p>
           </div>
         )}
       </div>
@@ -895,59 +960,36 @@ export const Customers: React.FC<CustomersProps> = ({
                   </button>
                </div>
                
-               <div className="p-8 space-y-6">
-                  <div className="grid grid-cols-2 gap-6">
-                     <div className="col-span-2">
+               <div className="p-6 md:p-8 space-y-6">
+                  {/* ... Add Customer Form Fields ... */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                     <div className="col-span-1 md:col-span-2">
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Imię i Nazwisko / Nazwa Firmy</label>
                         <input 
                            type="text" 
                            value={newCustomer.name} 
                            onChange={(e) => setNewCustomer({...newCustomer, name: e.target.value})}
                            className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                           placeholder="Jan Kowalski"
                         />
                      </div>
-                     
                      <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label>
-                        <input 
-                           type="email" 
-                           value={newCustomer.email} 
-                           onChange={(e) => setNewCustomer({...newCustomer, email: e.target.value})}
-                           className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                           placeholder="email@example.com"
-                        />
+                        <input type="email" value={newCustomer.email} onChange={(e) => setNewCustomer({...newCustomer, email: e.target.value})} className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" />
                      </div>
-
                      <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Telefon</label>
-                        <input 
-                           type="text" 
-                           value={newCustomer.phone} 
-                           onChange={(e) => setNewCustomer({...newCustomer, phone: e.target.value})}
-                           className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                           placeholder="+48 123 456 789"
-                        />
+                        <input type="text" value={newCustomer.phone} onChange={(e) => setNewCustomer({...newCustomer, phone: e.target.value})} className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" />
                      </div>
-
-                     <div className="col-span-2 border-t border-slate-100 pt-4 mt-2">
+                     <div className="col-span-1 md:col-span-2 border-t border-slate-100 pt-4 mt-2">
                         <p className="text-sm font-bold text-slate-700 mb-3">Adres Inwestycji</p>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="col-span-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="col-span-1 md:col-span-2">
                                 <input type="text" placeholder="Ulica i numer" value={newCustomer.street} onChange={(e) => setNewCustomer({...newCustomer, street: e.target.value})} className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
                             </div>
-                            <div>
-                                <input type="text" placeholder="Kod pocztowy" value={newCustomer.zip} onChange={(e) => setNewCustomer({...newCustomer, zip: e.target.value})} className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
-                            </div>
-                            <div>
-                                <input type="text" placeholder="Miejscowość" value={newCustomer.city} onChange={(e) => setNewCustomer({...newCustomer, city: e.target.value})} className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
-                            </div>
-                            <div>
-                                <input type="text" placeholder="Powiat" value={newCustomer.county} onChange={(e) => setNewCustomer({...newCustomer, county: e.target.value})} className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
-                            </div>
-                            <div>
-                                <input type="text" placeholder="Województwo" value={newCustomer.voivodeship} onChange={(e) => setNewCustomer({...newCustomer, voivodeship: e.target.value})} className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
-                            </div>
+                            <input type="text" placeholder="Kod pocztowy" value={newCustomer.zip} onChange={(e) => setNewCustomer({...newCustomer, zip: e.target.value})} className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                            <input type="text" placeholder="Miejscowość" value={newCustomer.city} onChange={(e) => setNewCustomer({...newCustomer, city: e.target.value})} className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                            <input type="text" placeholder="Powiat" value={newCustomer.county} onChange={(e) => setNewCustomer({...newCustomer, county: e.target.value})} className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                            <input type="text" placeholder="Województwo" value={newCustomer.voivodeship} onChange={(e) => setNewCustomer({...newCustomer, voivodeship: e.target.value})} className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
                         </div>
                      </div>
                   </div>
@@ -964,8 +1006,44 @@ export const Customers: React.FC<CustomersProps> = ({
                      onClick={submitAddCustomer}
                      className="px-6 py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-colors flex items-center"
                   >
-                     <Plus className="w-5 h-5 mr-2" /> Dodaj Klienta
+                     <Plus className="w-5 h-5 mr-2" /> Dodaj
                   </button>
+               </div>
+            </div>
+         </div>
+      )}
+
+      {/* Image Modal */}
+      {selectedImage && (
+         <div 
+           className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4 md:p-8 backdrop-blur-sm animate-fade-in"
+           onClick={() => setSelectedImage(null)}
+         >
+            <div className="relative max-w-full max-h-full" onClick={(e) => e.stopPropagation()}>
+               <img 
+                 src={selectedImage.url} 
+                 alt={selectedImage.name} 
+                 className="max-h-[85vh] max-w-full rounded-lg shadow-2xl"
+               />
+               <div className="absolute top-4 right-4 flex space-x-3">
+                  <button 
+                    onClick={() => handleDownloadFile(selectedImage)}
+                    className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-md transition-colors"
+                    title="Pobierz"
+                  >
+                     <Download className="w-6 h-6" />
+                  </button>
+                  <button 
+                    onClick={() => setSelectedImage(null)}
+                    className="p-3 bg-white/10 hover:bg-red-500/50 text-white rounded-full backdrop-blur-md transition-colors"
+                    title="Zamknij"
+                  >
+                     <X className="w-6 h-6" />
+                  </button>
+               </div>
+               <div className="absolute bottom-4 left-4 right-4 bg-black/60 p-4 rounded-xl backdrop-blur-md">
+                  <p className="text-white font-bold">{selectedImage.name}</p>
+                  <p className="text-white/60 text-xs">{selectedImage.dateUploaded}</p>
                </div>
             </div>
          </div>
