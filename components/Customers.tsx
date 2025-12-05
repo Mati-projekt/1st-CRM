@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Customer, Installation, InstallationStatus, UploadedFile, Offer, UserRole, PaymentEntry } from '../types';
-import { Search, Mail, Phone, MapPin, Plus, Save, Zap, File as FileIcon, Camera, Image as ImageIcon, ClipboardList, User, FilePieChart, ExternalLink, Banknote, History, Calendar, Check, CheckCircle, Battery, Upload, Trash2, Users, FileText } from 'lucide-react';
+import { Search, Mail, Phone, MapPin, Plus, Save, Zap, File as FileIcon, Camera, Image as ImageIcon, ClipboardList, User, FilePieChart, ExternalLink, Banknote, History, Calendar, Check, CheckCircle, Battery, Upload, Trash2, Users, FileText, Hammer, X, Shovel } from 'lucide-react';
 import { generateCustomerEmail } from '../services/geminiService';
 import { NotificationType } from './Notification';
 
@@ -16,7 +16,8 @@ interface CustomersProps {
   selectedCustomerId: string | null;
   setSelectedCustomerId: (id: string | null) => void;
   onEditOffer: (offer: Offer) => void;
-  onAcceptOffer: (customerId: string, offerId: string) => void;
+  onAcceptOffer: (customerId: string, offerId: string) => Promise<void>;
+  onAddCustomer: (customerData: { name: string, email: string, phone: string, address: string }) => void;
   currentUserRole: UserRole;
   currentUserName: string;
 }
@@ -35,12 +36,35 @@ export const Customers: React.FC<CustomersProps> = ({
   setSelectedCustomerId,
   onEditOffer,
   onAcceptOffer,
+  onAddCustomer,
   currentUserRole,
   currentUserName
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [editForm, setEditForm] = useState<Customer | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('data');
+  
+  // Modal State
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newCustomer, setNewCustomer] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    street: '',
+    zip: '',
+    city: '',
+    county: '',
+    voivodeship: ''
+  });
+
+  // Detailed Address State (for Editing)
+  const [addressDetails, setAddressDetails] = useState({
+    street: '',
+    zip: '',
+    city: '',
+    county: '',
+    voivodeship: ''
+  });
   
   const [aiDraft, setAiDraft] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -53,6 +77,7 @@ export const Customers: React.FC<CustomersProps> = ({
   const canEditStatus = currentUserRole === UserRole.ADMIN || currentUserRole === UserRole.OFFICE;
   const canEditFinances = currentUserRole === UserRole.ADMIN || currentUserRole === UserRole.OFFICE;
   const canAcceptOffer = currentUserRole === UserRole.ADMIN || currentUserRole === UserRole.OFFICE || currentUserRole === UserRole.SALES;
+  const canEditInstallationDetails = currentUserRole === UserRole.ADMIN || currentUserRole === UserRole.OFFICE;
 
   const filteredCustomers = customers.filter(c => 
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -60,6 +85,9 @@ export const Customers: React.FC<CustomersProps> = ({
   );
 
   const selectedInstallation = installations.find(i => i.customerId === selectedCustomerId);
+  
+  // Find accepted offer for technical details
+  const acceptedOffer = editForm?.offers?.find(o => o.status === 'ACCEPTED');
 
   // Sync editForm with selected customer
   useEffect(() => {
@@ -67,6 +95,24 @@ export const Customers: React.FC<CustomersProps> = ({
       const customer = customers.find(c => c.id === selectedCustomerId);
       if (customer) {
         setEditForm({ ...customer });
+        
+        // Try to parse existing address string to pre-fill detailed fields
+        // Simple heuristic: Street, Zip City, County, Voivodeship
+        const parts = customer.address.split(',').map(s => s.trim());
+        if (parts.length >= 1) setAddressDetails(prev => ({ ...prev, street: parts[0] }));
+        if (parts.length >= 2) {
+           // Try to split zip and city
+           const zipCity = parts[1];
+           const zipMatch = zipCity.match(/\d{2}-\d{3}/);
+           if (zipMatch) {
+              setAddressDetails(prev => ({ ...prev, zip: zipMatch[0], city: zipCity.replace(zipMatch[0], '').trim() }));
+           } else {
+              setAddressDetails(prev => ({ ...prev, city: zipCity }));
+           }
+        }
+        if (parts.length >= 3) setAddressDetails(prev => ({ ...prev, county: parts[2] }));
+        if (parts.length >= 4) setAddressDetails(prev => ({ ...prev, voivodeship: parts[3] }));
+
         // Only clear AI draft when switching customers
         if (editForm?.id !== customer.id) {
            setAiDraft(null);
@@ -94,6 +140,18 @@ export const Customers: React.FC<CustomersProps> = ({
     }
   };
 
+  const handleAddressDetailChange = (field: string, value: string) => {
+    setAddressDetails(prev => {
+        const updated = { ...prev, [field]: value };
+        // Auto-update the main string
+        const fullAddress = `${updated.street}, ${updated.zip} ${updated.city}, ${updated.county}, ${updated.voivodeship}`;
+        if (editForm) {
+            setEditForm({ ...editForm, address: fullAddress });
+        }
+        return updated;
+    });
+  };
+
   const handleSaveCustomer = () => {
     if (editForm) {
       onUpdateCustomer(editForm);
@@ -103,6 +161,12 @@ export const Customers: React.FC<CustomersProps> = ({
   const handleStatusChange = (newStatus: InstallationStatus) => {
     if (selectedInstallation) {
       onUpdateInstallation({ ...selectedInstallation, status: newStatus });
+    }
+  };
+
+  const handleInstallationDetailChange = (field: keyof Installation, value: any) => {
+    if (selectedInstallation) {
+      onUpdateInstallation({ ...selectedInstallation, [field]: value });
     }
   };
 
@@ -163,11 +227,37 @@ export const Customers: React.FC<CustomersProps> = ({
     }
   };
 
-  const handleOfferAcceptClick = (e: React.MouseEvent, customerId: string, offerId: string) => {
+  const handleOfferAcceptClick = async (e: React.MouseEvent, customerId: string, offerId: string) => {
     e.preventDefault();
     e.stopPropagation();
-    onAcceptOffer(customerId, offerId);
-    setActiveTab('data'); // Switch to main tab to show updated data
+    try {
+      await onAcceptOffer(customerId, offerId);
+      onShowNotification("Pomyślnie zaakceptowano ofertę. Dane zostały zaktualizowane.");
+      setActiveTab('data'); // Switch to main tab AFTER update is confirmed
+    } catch (error) {
+      onShowNotification("Wystąpił błąd podczas akceptacji oferty", 'error');
+    }
+  };
+
+  const submitAddCustomer = () => {
+     if (!newCustomer.name || !newCustomer.phone) {
+       onShowNotification("Nazwa i telefon są wymagane", 'error');
+       return;
+     }
+     
+     const fullAddress = `${newCustomer.street}, ${newCustomer.zip} ${newCustomer.city}, ${newCustomer.county}, ${newCustomer.voivodeship}`;
+     
+     onAddCustomer({
+       name: newCustomer.name,
+       email: newCustomer.email,
+       phone: newCustomer.phone,
+       address: fullAddress
+     });
+     
+     setShowAddModal(false);
+     setNewCustomer({
+        name: '', email: '', phone: '', street: '', zip: '', city: '', county: '', voivodeship: ''
+     });
   };
 
   return (
@@ -219,7 +309,7 @@ export const Customers: React.FC<CustomersProps> = ({
         </div>
         <button 
           className="m-4 flex items-center justify-center p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-md font-bold text-sm"
-          onClick={() => onShowNotification("Funkcja dodawania w trakcie budowy", 'info')}
+          onClick={() => setShowAddModal(true)}
         >
           <Plus className="w-4 h-4 mr-2" /> Dodaj Klienta
         </button>
@@ -272,7 +362,7 @@ export const Customers: React.FC<CustomersProps> = ({
                
                {/* TAB: DATA */}
                {activeTab === 'data' && (
-                 <div className="max-w-4xl space-y-8 animate-fade-in">
+                 <div className="max-w-6xl space-y-8 animate-fade-in">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                           <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
@@ -306,14 +396,26 @@ export const Customers: React.FC<CustomersProps> = ({
                                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                                />
                              </div>
-                             <div>
-                               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Adres</label>
-                               <input 
-                                 type="text" 
-                                 value={editForm.address} 
-                                 onChange={(e) => handleInputChange('address', e.target.value)}
-                                 className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                               />
+                             
+                             <div className="pt-4 border-t border-slate-100">
+                               <p className="text-xs font-bold text-slate-500 uppercase mb-3">Adres Inwestycji</p>
+                               <div className="grid grid-cols-2 gap-3">
+                                  <div className="col-span-2">
+                                     <input type="text" placeholder="Ulica i numer" value={addressDetails.street} onChange={(e) => handleAddressDetailChange('street', e.target.value)} className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                                  </div>
+                                  <div>
+                                     <input type="text" placeholder="Kod pocztowy" value={addressDetails.zip} onChange={(e) => handleAddressDetailChange('zip', e.target.value)} className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                                  </div>
+                                  <div>
+                                     <input type="text" placeholder="Miejscowość" value={addressDetails.city} onChange={(e) => handleAddressDetailChange('city', e.target.value)} className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                                  </div>
+                                  <div>
+                                     <input type="text" placeholder="Powiat" value={addressDetails.county} onChange={(e) => handleAddressDetailChange('county', e.target.value)} className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                                  </div>
+                                  <div>
+                                     <input type="text" placeholder="Województwo" value={addressDetails.voivodeship} onChange={(e) => handleAddressDetailChange('voivodeship', e.target.value)} className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                                  </div>
+                               </div>
                              </div>
                           </div>
                        </div>
@@ -337,33 +439,54 @@ export const Customers: React.FC<CustomersProps> = ({
                                    ))}
                                  </select>
                                </div>
-                               <div>
-                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Moc Systemu (kWp)</label>
-                                 <input 
-                                   type="number" 
-                                   disabled
-                                   value={selectedInstallation.systemSizeKw} 
-                                   className="w-full p-2.5 border border-slate-200 bg-slate-50 rounded-lg text-sm font-bold text-slate-600"
-                                 />
-                               </div>
                                
-                               {/* Hardware Details from Accepted Offer */}
-                               {(selectedInstallation.panelModel || selectedInstallation.inverterModel) && (
-                                 <div className="pt-2 border-t border-slate-100 mt-2 space-y-2">
-                                    <div className="text-xs">
-                                       <span className="text-slate-400 uppercase font-bold">Panele:</span>
-                                       <p className="font-medium text-slate-700">{selectedInstallation.panelModel || '-'}</p>
-                                    </div>
-                                    <div className="text-xs">
-                                       <span className="text-slate-400 uppercase font-bold">Falownik:</span>
-                                       <p className="font-medium text-slate-700">{selectedInstallation.inverterModel || '-'}</p>
-                                    </div>
-                                    <div className="text-xs">
-                                       <span className="text-slate-400 uppercase font-bold">Magazyn:</span>
-                                       <p className="font-medium text-slate-700">{selectedInstallation.storageModel || 'Brak'}</p>
-                                    </div>
+                               <div className="grid grid-cols-2 gap-4">
+                                 <div>
+                                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Moc PV (kWp)</label>
+                                   <input 
+                                     type="number" 
+                                     value={selectedInstallation.systemSizeKw}
+                                     disabled={!canEditInstallationDetails}
+                                     onChange={(e) => handleInstallationDetailChange('systemSizeKw', Number(e.target.value))}
+                                     className={`w-full p-2.5 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 ${canEditInstallationDetails ? 'bg-white focus:ring-2 focus:ring-blue-500' : 'bg-slate-50'}`}
+                                   />
                                  </div>
-                               )}
+                                 <div>
+                                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Magazyn (kWh)</label>
+                                   <input 
+                                     type="number" 
+                                     value={selectedInstallation.storageSizeKw || 0}
+                                     disabled={!canEditInstallationDetails}
+                                     onChange={(e) => handleInstallationDetailChange('storageSizeKw', Number(e.target.value))}
+                                     className={`w-full p-2.5 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 ${canEditInstallationDetails ? 'bg-white focus:ring-2 focus:ring-blue-500' : 'bg-slate-50'}`}
+                                   />
+                                 </div>
+                               </div>
+
+                               <div className="pt-2 border-t border-slate-100 mt-2 space-y-3">
+                                  <div>
+                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Falownik</label>
+                                     <input 
+                                       type="text" 
+                                       value={selectedInstallation.inverterModel || ''}
+                                       disabled={!canEditInstallationDetails}
+                                       onChange={(e) => handleInstallationDetailChange('inverterModel', e.target.value)}
+                                       className={`w-full p-2.5 border border-slate-200 rounded-lg text-sm ${canEditInstallationDetails ? 'bg-white' : 'bg-slate-50'}`}
+                                       placeholder="Model falownika"
+                                     />
+                                  </div>
+                                  <div>
+                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">System Montażowy</label>
+                                     <input 
+                                       type="text" 
+                                       value={selectedInstallation.mountingSystem || ''}
+                                       disabled={!canEditInstallationDetails}
+                                       onChange={(e) => handleInstallationDetailChange('mountingSystem', e.target.value)}
+                                       className={`w-full p-2.5 border border-slate-200 rounded-lg text-sm ${canEditInstallationDetails ? 'bg-white' : 'bg-slate-50'}`}
+                                       placeholder="Rodzaj montażu"
+                                     />
+                                  </div>
+                               </div>
 
                                <div className="pt-2 border-t border-slate-100 mt-2">
                                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Wartość Umowy</label>
@@ -378,6 +501,42 @@ export const Customers: React.FC<CustomersProps> = ({
                           )}
                        </div>
                     </div>
+
+                    {/* Technical Calculator Details Preview */}
+                    {acceptedOffer && (
+                       <div className="bg-slate-50 border border-slate-200 rounded-xl p-6">
+                          <h3 className="font-bold text-slate-700 mb-4 flex items-center">
+                             <Hammer className="w-5 h-5 mr-2 text-slate-500" /> Dane Techniczne z Kalkulatora
+                          </h3>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                             <div className="flex items-center space-x-3 bg-white p-3 rounded-lg border border-slate-200">
+                                <div className="bg-amber-50 p-2 rounded-lg text-amber-600"><Hammer className="w-5 h-5" /></div>
+                                <div>
+                                   <p className="text-xs text-slate-500 uppercase font-bold">Typ Montażu</p>
+                                   <p className="font-bold text-slate-800">{acceptedOffer.calculatorState.roofType}</p>
+                                </div>
+                             </div>
+                             {acceptedOffer.calculatorState.roofType === 'GRUNT' && (
+                                <div className="flex items-center space-x-3 bg-white p-3 rounded-lg border border-slate-200">
+                                   <div className="bg-green-50 p-2 rounded-lg text-green-600"><Shovel className="w-5 h-5" /></div>
+                                   <div>
+                                      <p className="text-xs text-slate-500 uppercase font-bold">Długość Przekopu</p>
+                                      <p className="font-bold text-slate-800">{acceptedOffer.calculatorState.trenchLength} mb</p>
+                                   </div>
+                                </div>
+                             )}
+                             <div className="flex items-center space-x-3 bg-white p-3 rounded-lg border border-slate-200">
+                                <div className="bg-blue-50 p-2 rounded-lg text-blue-600"><Zap className="w-5 h-5" /></div>
+                                <div>
+                                   <p className="text-xs text-slate-500 uppercase font-bold">Konfiguracja</p>
+                                   <p className="font-bold text-slate-800">
+                                      {acceptedOffer.calculatorState.panelCount}x PV + {acceptedOffer.calculatorState.storageId ? 'Magazyn' : 'Brak Magazynu'}
+                                   </p>
+                                </div>
+                             </div>
+                          </div>
+                       </div>
+                    )}
                  </div>
                )}
 
@@ -561,12 +720,12 @@ export const Customers: React.FC<CustomersProps> = ({
                      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                         <div className="flex justify-between items-center mb-2">
                            <span className="font-bold text-slate-700">Postęp Płatności</span>
-                           <span className="font-bold text-blue-600">{((selectedInstallation.paidAmount / selectedInstallation.price) * 100).toFixed(0)}%</span>
+                           <span className="font-bold text-blue-600">{selectedInstallation.price > 0 ? ((selectedInstallation.paidAmount / selectedInstallation.price) * 100).toFixed(0) : 0}%</span>
                         </div>
                         <div className="w-full bg-slate-100 rounded-full h-4 overflow-hidden">
                            <div 
                              className="bg-gradient-to-r from-blue-500 to-blue-600 h-full rounded-full transition-all duration-1000"
-                             style={{width: `${(selectedInstallation.paidAmount / selectedInstallation.price) * 100}%`}}
+                             style={{width: `${selectedInstallation.price > 0 ? (selectedInstallation.paidAmount / selectedInstallation.price) * 100 : 0}%`}}
                            ></div>
                         </div>
                      </div>
@@ -722,6 +881,95 @@ export const Customers: React.FC<CustomersProps> = ({
           </div>
         )}
       </div>
+
+      {/* Add Customer Modal */}
+      {showAddModal && (
+         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+               <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                  <h3 className="text-xl font-bold text-slate-800 flex items-center">
+                     <Plus className="w-5 h-5 mr-2 text-blue-600" /> Dodaj Nowego Klienta
+                  </h3>
+                  <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600">
+                     <X className="w-6 h-6" />
+                  </button>
+               </div>
+               
+               <div className="p-8 space-y-6">
+                  <div className="grid grid-cols-2 gap-6">
+                     <div className="col-span-2">
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Imię i Nazwisko / Nazwa Firmy</label>
+                        <input 
+                           type="text" 
+                           value={newCustomer.name} 
+                           onChange={(e) => setNewCustomer({...newCustomer, name: e.target.value})}
+                           className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                           placeholder="Jan Kowalski"
+                        />
+                     </div>
+                     
+                     <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label>
+                        <input 
+                           type="email" 
+                           value={newCustomer.email} 
+                           onChange={(e) => setNewCustomer({...newCustomer, email: e.target.value})}
+                           className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                           placeholder="email@example.com"
+                        />
+                     </div>
+
+                     <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Telefon</label>
+                        <input 
+                           type="text" 
+                           value={newCustomer.phone} 
+                           onChange={(e) => setNewCustomer({...newCustomer, phone: e.target.value})}
+                           className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                           placeholder="+48 123 456 789"
+                        />
+                     </div>
+
+                     <div className="col-span-2 border-t border-slate-100 pt-4 mt-2">
+                        <p className="text-sm font-bold text-slate-700 mb-3">Adres Inwestycji</p>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="col-span-2">
+                                <input type="text" placeholder="Ulica i numer" value={newCustomer.street} onChange={(e) => setNewCustomer({...newCustomer, street: e.target.value})} className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                            </div>
+                            <div>
+                                <input type="text" placeholder="Kod pocztowy" value={newCustomer.zip} onChange={(e) => setNewCustomer({...newCustomer, zip: e.target.value})} className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                            </div>
+                            <div>
+                                <input type="text" placeholder="Miejscowość" value={newCustomer.city} onChange={(e) => setNewCustomer({...newCustomer, city: e.target.value})} className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                            </div>
+                            <div>
+                                <input type="text" placeholder="Powiat" value={newCustomer.county} onChange={(e) => setNewCustomer({...newCustomer, county: e.target.value})} className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                            </div>
+                            <div>
+                                <input type="text" placeholder="Województwo" value={newCustomer.voivodeship} onChange={(e) => setNewCustomer({...newCustomer, voivodeship: e.target.value})} className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                            </div>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+
+               <div className="p-6 bg-slate-50 border-t border-slate-200 flex justify-end space-x-3">
+                  <button 
+                     onClick={() => setShowAddModal(false)}
+                     className="px-6 py-3 rounded-xl border border-slate-300 text-slate-600 font-bold hover:bg-white transition-colors"
+                  >
+                     Anuluj
+                  </button>
+                  <button 
+                     onClick={submitAddCustomer}
+                     className="px-6 py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-colors flex items-center"
+                  >
+                     <Plus className="w-5 h-5 mr-2" /> Dodaj Klienta
+                  </button>
+               </div>
+            </div>
+         </div>
+      )}
     </div>
   );
 };

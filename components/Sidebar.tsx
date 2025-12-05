@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { LayoutDashboard, Users, Wrench, Package, Sun, Grid, UserCircle, Briefcase, LogOut } from 'lucide-react';
 import { ViewState, User, UserRole } from '../types';
@@ -43,7 +42,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, cur
     <div className="w-64 bg-slate-900 text-white flex flex-col h-full shadow-xl">
       <div className="p-6 flex items-center space-x-3 border-b border-slate-700">
         <Sun className="text-yellow-400 w-8 h-8" />
-        <h1 className="text-xl font-bold tracking-wider">SolarCRM</h1>
+        <h1 className="text-xl font-bold tracking-wider">Family CRM</h1>
       </div>
       
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
@@ -68,7 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, cur
 
       <div className="p-4 border-t border-slate-700 bg-slate-800/50">
         <div className="flex items-center space-x-3 mb-4">
-          <div className="w-10 h-10 rounded-full bg-slate-600 flex items-center justify-center border-2 border-slate-500">
+          <div className="w-10 h-10 rounded-full bg-slate-600 flex items-center justify-center border-2 border-slate-50">
             <UserCircle className="w-6 h-6 text-slate-300" />
           </div>
           <div className="overflow-hidden flex-1">

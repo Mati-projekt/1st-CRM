@@ -1,44 +1,62 @@
-
 import React, { useState } from 'react';
-import { Sun, Lock, Mail, ArrowRight, AlertCircle, CheckCircle } from 'lucide-react';
-import { User, UserRole } from '../types';
-import { MOCK_USERS } from '../constants';
+import { Sun, Lock, Mail, ArrowRight, AlertCircle } from 'lucide-react';
+import { supabase } from '../services/supabaseClient';
 
 interface LoginProps {
-  onLogin: (user: User) => void;
+  onLogin: () => void; // App handles the user state via useEffect, just need to trigger fetch
 }
 
 export const Login: React.FC<LoginProps> = ({ onLogin }) => {
-  const [email, setEmail] = useState('admin@solarcrm.pl');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false); // Toggle for registration
+  const [name, setName] = useState(''); // Only for sign up
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
 
-    // Simulate API delay
-    setTimeout(() => {
-      // Simple mock authentication logic
-      const user = MOCK_USERS.find(u => u.email === email);
-      
-      // Hardcoded passwords for demo purposes
-      // In a real app, this would be a backend validation
-      const isValidPass = 
-        (email === 'admin@solarcrm.pl' && password === 'admin123') ||
-        (email === 'handlowiec@solarcrm.pl' && password === 'sales123') ||
-        (email === 'biuro@solarcrm.pl' && password === 'office123') ||
-        (email === 'ekipa1@solarcrm.pl' && password === 'team123');
-
-      if (user && isValidPass) {
-        onLogin(user);
+    try {
+      if (isSignUp) {
+        // Sign Up Logic
+        const { error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              name: name,
+              role: 'HANDLOWIEC' // Default role for new signups, Admin can change later in DB
+            }
+          }
+        });
+        if (signUpError) throw signUpError;
+        alert("Rejestracja udana! Sprawdź email, aby potwierdzić konto, lub uruchom skrypt SQL 'confirm_email.sql' w Supabase.");
+        setIsSignUp(false);
       } else {
-        setError("Nieprawidłowy email lub hasło.");
-        setIsLoading(false);
+        // Sign In Logic
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (signInError) throw signInError;
+        // onLogin is handled by auth state listener in App.tsx, but we can trigger it
+        onLogin();
       }
-    }, 800);
+    } catch (err: any) {
+      console.error("Auth error:", err);
+      if (err.message && err.message.includes("Email not confirmed")) {
+        setError("Adres email nie został potwierdzony. Sprawdź skrzynkę pocztową lub potwierdź użytkownika ręcznie w panelu Supabase (Authentication -> Users) lub przez SQL.");
+      } else if (err.message && err.message.includes("Invalid login credentials")) {
+        setError("Błędny email lub hasło.");
+      } else {
+        setError(err.message || "Błąd logowania");
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -55,12 +73,28 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg mb-4">
             <Sun className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">SolarCRM</h1>
-          <p className="text-slate-400 mt-2">Zaloguj się do systemu zarządzania</p>
+          <h1 className="text-3xl font-bold text-white tracking-tight">Family CRM</h1>
+          <p className="text-slate-400 mt-2">
+            {isSignUp ? 'Utwórz nowe konto' : 'Zaloguj się do systemu'}
+          </p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-6">
+        <form onSubmit={handleAuth} className="space-y-6">
           <div className="space-y-4">
+            {isSignUp && (
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase mb-2 ml-1">Imię i Nazwisko</label>
+                <input 
+                  type="text" 
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full bg-slate-800/50 border border-slate-600 text-white px-4 py-3.5 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none placeholder:text-slate-500"
+                  placeholder="Jan Kowalski"
+                  required
+                />
+              </div>
+            )}
+
             <div>
               <label className="block text-xs font-bold text-slate-300 uppercase mb-2 ml-1">Adres Email</label>
               <div className="relative group">
@@ -108,18 +142,22 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
             ) : (
               <>
-                Zaloguj się <ArrowRight className="w-5 h-5 ml-2" />
+                {isSignUp ? 'Zarejestruj się' : 'Zaloguj się'} <ArrowRight className="w-5 h-5 ml-2" />
               </>
             )}
           </button>
         </form>
 
         <div className="mt-8 pt-6 border-t border-white/10 text-center">
-          <p className="text-xs text-slate-500 mb-2">Dostępne konta demo (Hasło: odpowiednio do roli + 123, np. admin123)</p>
-          <div className="flex flex-wrap justify-center gap-2">
-            <span className="px-2 py-1 bg-slate-800/50 rounded text-[10px] text-slate-400 border border-slate-700">admin@solarcrm.pl</span>
-            <span className="px-2 py-1 bg-slate-800/50 rounded text-[10px] text-slate-400 border border-slate-700">handlowiec@solarcrm.pl</span>
-          </div>
+          <p className="text-xs text-slate-500 mb-2">
+             {isSignUp ? 'Masz już konto?' : 'Nie masz konta?'}
+          </p>
+          <button 
+            onClick={() => setIsSignUp(!isSignUp)}
+            className="text-amber-400 hover:text-amber-300 font-bold text-sm"
+          >
+             {isSignUp ? 'Zaloguj się' : 'Utwórz konto'}
+          </button>
         </div>
       </div>
     </div>

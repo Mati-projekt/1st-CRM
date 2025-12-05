@@ -167,6 +167,9 @@ export interface Installation {
   panelModel?: string;
   inverterModel?: string;
   storageModel?: string;
+  storageSizeKw?: number; // Capacity in kWh
+  mountingSystem?: string; // e.g. "Dachówka - K2 System"
+  trenchLength?: number; // Only for Ground
 
   // Payment tracking
   price: number;       // Total contract value

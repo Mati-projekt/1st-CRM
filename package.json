@@ -1,5 +1,5 @@
 {
-  "name": "crm-fam",
+  "name": "family-crm",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,10 +9,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.86.2",
+    "lucide-react": "^0.556.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
-    "@google/genai": "^1.31.0",
-    "lucide-react": "^0.556.0"
+    "@google/genai": "^1.31.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
