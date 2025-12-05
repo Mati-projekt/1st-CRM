@@ -254,7 +254,9 @@ export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, o
                                 {item.quantity} {item.unit}
                              </span>
                              {item.quantity <= item.minQuantity && (
-                                <AlertTriangle className="w-4 h-4 text-red-500" title="Poniżej stanu minimalnego" />
+                                <span title="Poniżej stanu minimalnego">
+                                  <AlertTriangle className="w-4 h-4 text-red-500" />
+                                </span>
                              )}
                           </div>
                           <p className="text-[10px] text-slate-400">Min: {item.minQuantity}</p>
