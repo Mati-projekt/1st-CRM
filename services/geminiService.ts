@@ -9,8 +9,22 @@ declare var process: {
   }
 };
 
-// Helper to safely get the API key without crashing if process is undefined
+// Helper to safely get the API key from various environment sources
 const getApiKey = () => {
+  // 1. Try Vite standard way (import.meta.env)
+  try {
+    // @ts-ignore
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+      // @ts-ignore
+      if (import.meta.env.VITE_API_KEY) return import.meta.env.VITE_API_KEY;
+      // @ts-ignore
+      if (import.meta.env.API_KEY) return import.meta.env.API_KEY;
+    }
+  } catch (e) {
+    // Ignore error if import.meta is not available
+  }
+
+  // 2. Try Node/Process standard way
   try {
     if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
       return process.env.API_KEY;
@@ -18,6 +32,7 @@ const getApiKey = () => {
   } catch (e) {
     console.error("Error accessing process.env", e);
   }
+  
   return '';
 };
 
@@ -25,7 +40,7 @@ export const generateCustomerEmail = async (customer: Customer, installation: In
   try {
     const apiKey = getApiKey();
     if (!apiKey) {
-      console.error("API Key is missing. Please set API_KEY in your environment variables.");
+      console.error("API Key is missing. Please set API_KEY or VITE_API_KEY in your environment variables.");
       return "Błąd: Brak klucza API. Skontaktuj się z administratorem.";
     }
 
