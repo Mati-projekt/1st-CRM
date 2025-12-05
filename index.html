@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pl">
   <head>
@@ -6,6 +7,10 @@
     <title>SolarCRM - Zarządzanie Fotowoltaiką</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
+      html, body, #root {
+        height: 100%;
+        margin: 0;
+      }
       body {
         font-family: 'Inter', sans-serif;
         background-color: #f3f4f6;
@@ -25,6 +30,32 @@
       ::-webkit-scrollbar-thumb:hover {
         background: #94a3b8; 
       }
+      
+      /* Animations */
+      @keyframes fade-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-fade-in {
+        animation: fade-in 0.5s ease-out forwards;
+      }
+
+      @keyframes slide-up {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-slide-up {
+        animation: slide-up 0.4s ease-out forwards;
+      }
+
+      @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+        20%, 40%, 60%, 80% { transform: translateX(4px); }
+      }
+      .animate-shake {
+        animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+      }
     </style>
   <script type="importmap">
 {
@@ -40,5 +71,6 @@
 </head>
   <body>
     <div id="root"></div>
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>
