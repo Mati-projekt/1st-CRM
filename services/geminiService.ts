@@ -1,11 +1,22 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { Customer, Installation, InventoryItem, ProductCategory } from "../types";
 
+// Declare process to avoid TypeScript build errors if @types/node is missing
+declare var process: {
+  env: {
+    API_KEY?: string;
+    [key: string]: string | undefined;
+  }
+};
+
 // Helper to safely get the API key without crashing if process is undefined
 const getApiKey = () => {
-  if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
-    return process.env.API_KEY;
+  try {
+    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+      return process.env.API_KEY;
+    }
+  } catch (e) {
+    console.error("Error accessing process.env", e);
   }
   return '';
 };
