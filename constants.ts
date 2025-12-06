@@ -1,4 +1,5 @@
 
+
 import { Customer, Installation, InstallationStatus, InventoryItem, ProductCategory, User, UserRole, Task, Message } from "./types";
 
 export const MOCK_USERS: User[] = [
@@ -27,15 +28,9 @@ export const MOCK_CUSTOMERS: Customer[] = [
     phone: '+48 500 100 100', 
     address: 'Ul. Słoneczna 12, 05-500 Piaseczno', 
     notes: 'Klient zainteresowany pompą ciepła w przyszłości.',
-    repId: 'sales1', // Assigned to Hubert
-    files: [
-      { id: 'f1', name: 'Umowa_wstępna.pdf', type: 'application/pdf', dateUploaded: '2023-10-01' },
-      { id: 'f2', name: 'Rzut_dachu.pdf', type: 'application/pdf', dateUploaded: '2023-10-02' }
-    ],
-    auditPhotos: [
-      { id: 'ap1', name: 'Dach_poludnie.jpg', type: 'image/jpeg', dateUploaded: '2023-10-03' },
-      { id: 'ap2', name: 'Skrzynka_elektryczna.jpg', type: 'image/jpeg', dateUploaded: '2023-10-03' }
-    ],
+    repId: 'sales1', 
+    files: [],
+    auditPhotos: [],
     offers: []
   },
   { 
@@ -45,7 +40,7 @@ export const MOCK_CUSTOMERS: Customer[] = [
     phone: '+48 600 200 200', 
     address: 'Ul. Zielona 5, 30-001 Kraków', 
     notes: 'Dach płaski, wymaga ekierki.',
-    repId: 'admin1', // Assigned to Admin
+    repId: 'admin1',
     offers: []
   },
   { 
@@ -71,14 +66,36 @@ export const MOCK_CUSTOMERS: Customer[] = [
 ];
 
 export const MOCK_INVENTORY: InventoryItem[] = [
-  { id: '1', name: 'Jinko Tiger Neo', category: ProductCategory.PANEL, quantity: 120, minQuantity: 50, price: 450, unit: 'szt.', power: 440, warranty: '25 lat', url: 'https://example.com/jinko-panel', dateAdded: '2023-10-01T10:00:00Z' },
-  { id: '2', name: 'Huawei SUN2000-5KTL', category: ProductCategory.INVERTER, quantity: 4, minQuantity: 5, price: 3200, unit: 'szt.', warranty: '10 lat', power: 5, url: 'https://example.com/huawei-inverter', dateAdded: '2023-10-05T12:30:00Z' },
-  { id: '3', name: 'Huawei SUN2000-10KTL', category: ProductCategory.INVERTER, quantity: 12, minQuantity: 5, price: 4500, unit: 'szt.', warranty: '10 lat', power: 10, dateAdded: '2023-10-06T09:15:00Z' },
-  { id: '4', name: 'Kabel solarny 6mm2', category: ProductCategory.ACCESSORIES, quantity: 500, minQuantity: 200, price: 4, unit: 'mb', warranty: '5 lat', dateAdded: '2023-09-20T14:20:00Z' },
-  { id: '5', name: 'System montażowy dachówka', category: ProductCategory.ACCESSORIES, quantity: 15, minQuantity: 20, price: 1200, unit: 'kpl.', warranty: '10 lat', dateAdded: '2023-09-25T11:10:00Z' },
-  { id: '6', name: 'FoxESS ECS 2900', category: ProductCategory.ENERGY_STORAGE, quantity: 2, minQuantity: 3, price: 15600, unit: 'szt.', warranty: '10 lat', power: 2.8, capacity: 5.76, url: 'https://example.com/foxess-storage', dateAdded: '2023-11-01T08:45:00Z' },
-  { id: '7', name: 'Longi Solar Hi-MO 6', category: ProductCategory.PANEL, quantity: 30, minQuantity: 100, price: 420, unit: 'szt.', power: 435, warranty: '15 lat', dateAdded: '2023-11-10T16:50:00Z' },
-  { id: '8', name: 'Złączki MC4', category: ProductCategory.ADDONS, quantity: 200, minQuantity: 50, price: 5, unit: 'szt.', warranty: '2 lata', dateAdded: '2023-10-15T13:05:00Z' },
+  // PANELE
+  { id: 'p1', name: 'Jinko Tiger Neo 440W N-Type', category: ProductCategory.PANEL, quantity: 120, minQuantity: 50, price: 450, unit: 'szt.', power: 440, warranty: '25 lat', dateAdded: '2023-10-01T10:00:00Z' },
+  { id: 'p2', name: 'Longi Solar Hi-MO 6 435W', category: ProductCategory.PANEL, quantity: 200, minQuantity: 40, price: 420, unit: 'szt.', power: 435, warranty: '15 lat', dateAdded: '2023-11-10T16:50:00Z' },
+  { id: 'p3', name: 'Trina Solar Vertex S+ 445W', category: ProductCategory.PANEL, quantity: 80, minQuantity: 20, price: 460, unit: 'szt.', power: 445, warranty: '25 lat', dateAdded: '2023-11-12T10:00:00Z' },
+
+  // FALOWNIKI 1-FAZOWE
+  { id: 'i1', name: 'Huawei SUN2000-3KTL-L1 (1F)', category: ProductCategory.INVERTER, quantity: 5, minQuantity: 2, price: 2800, unit: 'szt.', warranty: '10 lat', power: 3, phases: 1, dateAdded: '2023-10-05T12:30:00Z' },
+  { id: 'i2', name: 'Sofar Solar 3.6 KTLM-G3 (1F)', category: ProductCategory.INVERTER, quantity: 3, minQuantity: 2, price: 2400, unit: 'szt.', warranty: '10 lat', power: 3.6, phases: 1, dateAdded: '2023-10-05T12:30:00Z' },
+
+  // FALOWNIKI 3-FAZOWE
+  { id: 'i3', name: 'Huawei SUN2000-5KTL-M1 (3F)', category: ProductCategory.INVERTER, quantity: 10, minQuantity: 5, price: 4200, unit: 'szt.', warranty: '10 lat', power: 5, phases: 3, dateAdded: '2023-10-06T09:15:00Z' },
+  { id: 'i4', name: 'Huawei SUN2000-8KTL-M1 (3F)', category: ProductCategory.INVERTER, quantity: 8, minQuantity: 3, price: 5500, unit: 'szt.', warranty: '10 lat', power: 8, phases: 3, dateAdded: '2023-10-06T09:15:00Z' },
+  { id: 'i5', name: 'Huawei SUN2000-10KTL-M1 (3F)', category: ProductCategory.INVERTER, quantity: 12, minQuantity: 5, price: 6200, unit: 'szt.', warranty: '10 lat', power: 10, phases: 3, dateAdded: '2023-10-06T09:15:00Z' },
+  { id: 'i6', name: 'FoxESS T8.0 G3 (3F)', category: ProductCategory.INVERTER, quantity: 6, minQuantity: 2, price: 4800, unit: 'szt.', warranty: '12 lat', power: 8, phases: 3, dateAdded: '2023-10-07T09:15:00Z' },
+  { id: 'i7', name: 'FoxESS T10.0 G3 (3F)', category: ProductCategory.INVERTER, quantity: 8, minQuantity: 2, price: 5200, unit: 'szt.', warranty: '12 lat', power: 10, phases: 3, dateAdded: '2023-10-07T09:15:00Z' },
+
+  // MAGAZYNY
+  { id: 's1', name: 'Huawei LUNA2000-5-S0', category: ProductCategory.ENERGY_STORAGE, quantity: 4, minQuantity: 2, price: 12000, unit: 'szt.', warranty: '10 lat', power: 2.5, capacity: 5, dateAdded: '2023-11-01T08:45:00Z' },
+  { id: 's2', name: 'FoxESS ECS 2900 (2.88 kWh)', category: ProductCategory.ENERGY_STORAGE, quantity: 6, minQuantity: 3, price: 6500, unit: 'szt.', warranty: '10 lat', power: 2.8, capacity: 2.88, dateAdded: '2023-11-01T08:45:00Z' },
+
+  // SYSTEMY MONTAŻOWE
+  { id: 'm1', name: 'Konstrukcja na dach skośny (Dachówka)', category: ProductCategory.ACCESSORIES, quantity: 50, minQuantity: 10, price: 180, unit: 'szt.', warranty: '10 lat', dateAdded: '2023-09-25T11:10:00Z' },
+  { id: 'm2', name: 'Konstrukcja na dach skośny (Blacha/Trapez)', category: ProductCategory.ACCESSORIES, quantity: 50, minQuantity: 10, price: 140, unit: 'szt.', warranty: '10 lat', dateAdded: '2023-09-25T11:10:00Z' },
+  { id: 'm3', name: 'Ekierki dach płaski (15 stopni)', category: ProductCategory.ACCESSORIES, quantity: 30, minQuantity: 5, price: 250, unit: 'szt.', warranty: '10 lat', dateAdded: '2023-09-25T11:10:00Z' },
+  { id: 'm4', name: 'Konstrukcja Gruntowa 2-podporowa', category: ProductCategory.ACCESSORIES, quantity: 20, minQuantity: 2, price: 600, unit: 'szt.', warranty: '15 lat', dateAdded: '2023-09-25T11:10:00Z' },
+
+  // AKCESORIA
+  { id: 'a1', name: 'Kabel solarny 6mm2', category: ProductCategory.ADDONS, quantity: 500, minQuantity: 200, price: 4, unit: 'mb', warranty: '5 lat', dateAdded: '2023-09-20T14:20:00Z' },
+  { id: 'a2', name: 'Złączki MC4 (Para)', category: ProductCategory.ADDONS, quantity: 200, minQuantity: 50, price: 8, unit: 'szt.', warranty: '2 lata', dateAdded: '2023-10-15T13:05:00Z' },
+  { id: 'a3', name: 'Skrzynka AC/DC (Zabezpieczenia)', category: ProductCategory.ADDONS, quantity: 15, minQuantity: 5, price: 800, unit: 'szt.', warranty: '2 lata', dateAdded: '2023-10-15T13:05:00Z' },
 ];
 
 export const MOCK_INSTALLATIONS: Installation[] = [

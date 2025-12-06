@@ -1,11 +1,11 @@
-
 import React from 'react';
-import { Installation, InstallationStatus, Customer, UserRole } from '../types';
-import { Calendar, MapPin, User, ChevronRight, Settings, Banknote } from 'lucide-react';
+import { Installation, InstallationStatus, Customer, UserRole, User } from '../types';
+import { Calendar, MapPin, User as UserIcon, ChevronRight, Settings, Banknote, Briefcase } from 'lucide-react';
 
 interface InstallationsProps {
   installations: Installation[];
   customers: Customer[];
+  users: User[];
   onNavigateToCustomer: (customerId: string) => void;
   onUpdateInstallation: (installation: Installation) => void;
   currentUserRole: UserRole;
@@ -14,11 +14,22 @@ interface InstallationsProps {
 export const Installations: React.FC<InstallationsProps> = ({ 
   installations, 
   customers, 
+  users,
   onNavigateToCustomer,
   onUpdateInstallation,
   currentUserRole
 }) => {
   const getCustomerName = (id: string) => customers.find(c => c.id === id)?.name || 'Nieznany';
+  
+  const getOwnerName = (customerId: string) => {
+     const customer = customers.find(c => c.id === customerId);
+     if (!customer?.repId) return 'Nieprzypisany';
+     const owner = users.find(u => u.id === customer.repId);
+     return owner ? owner.name : 'Nieznany';
+  };
+
+  const isInstaller = currentUserRole === UserRole.INSTALLER;
+  const canEditStatus = currentUserRole === UserRole.ADMIN || currentUserRole === UserRole.OFFICE || currentUserRole === UserRole.SALES_MANAGER;
 
   // Define columns for the Kanban board
   const columns = [
@@ -38,8 +49,6 @@ export const Installations: React.FC<InstallationsProps> = ({
       onUpdateInstallation({ ...inst, status: newStatus });
     }
   };
-
-  const canEditStatus = currentUserRole === UserRole.ADMIN || currentUserRole === UserRole.OFFICE;
 
   return (
     <div className="h-[calc(100vh-8rem)] overflow-x-auto overflow-y-hidden p-4">
@@ -75,6 +84,14 @@ export const Installations: React.FC<InstallationsProps> = ({
                         {getCustomerName(inst.customerId)}
                      </h4>
                      
+                     {/* Owner Attribution */}
+                     <div className="flex items-center text-xs text-slate-500 mb-2 bg-slate-50 p-1 rounded border border-slate-100 w-fit">
+                        <Briefcase className="w-3 h-3 mr-1 text-slate-400" />
+                        <span className="text-[10px] font-medium text-slate-600 truncate max-w-[150px]">
+                           Opiekun: {getOwnerName(inst.customerId)}
+                        </span>
+                     </div>
+                     
                      <div className="space-y-1 text-xs text-slate-500 mb-3">
                        <div className="flex items-center">
                          <MapPin className="w-3 h-3 mr-1 shrink-0" />
@@ -88,8 +105,8 @@ export const Installations: React.FC<InstallationsProps> = ({
                        )}
                      </div>
 
-                     {/* Payment Progress */}
-                     {inst.price > 0 && (
+                     {/* Payment Progress - Hidden for Installers */}
+                     {inst.price > 0 && !isInstaller && (
                         <div className="mb-3">
                           <div className="flex justify-between text-[10px] text-slate-500 mb-1">
                              <span className="flex items-center"><Banknote className="w-3 h-3 mr-1" /> Płatność</span>

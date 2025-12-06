@@ -1,19 +1,21 @@
 
+
 import React, { useState } from 'react';
 import { InventoryItem, ProductCategory } from '../types';
-import { AlertTriangle, Package, Brain, Edit2, X, Save, Zap, ShieldCheck, Plus, Battery, Filter, ExternalLink, Search, Link as LinkIcon, ArrowUpDown } from 'lucide-react';
+import { AlertTriangle, Package, Brain, Edit2, X, Save, Zap, ShieldCheck, Plus, Battery, Filter, ExternalLink, Search, Link as LinkIcon, ArrowUpDown, Database } from 'lucide-react';
 import { analyzeInventory } from '../services/geminiService';
 
 interface InventoryProps {
   inventory: InventoryItem[];
   onUpdateItem: (item: InventoryItem) => void;
   onAddItem: (item: InventoryItem) => void;
+  onLoadSampleData?: () => void;
 }
 
 type SortField = 'name' | 'price' | 'quantity' | 'dateAdded';
 type SortOrder = 'asc' | 'desc';
 
-export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, onAddItem }) => {
+export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, onAddItem, onLoadSampleData }) => {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   
@@ -102,12 +104,22 @@ export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, o
             </h2>
             <p className="text-slate-500 text-xs md:text-sm mt-1">Zarządzaj produktami i monitoruj dostępność.</p>
          </div>
-         <button 
-           onClick={handleAddNew}
-           className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold transition-colors flex items-center justify-center shadow-lg shadow-blue-200"
-         >
-           <Plus className="w-5 h-5 mr-2" /> Dodaj Produkt
-         </button>
+         <div className="flex space-x-2 w-full md:w-auto">
+             {inventory.length === 0 && onLoadSampleData && (
+               <button 
+                 onClick={onLoadSampleData}
+                 className="flex-1 md:flex-none bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-3 rounded-xl font-bold transition-colors flex items-center justify-center shadow-lg"
+               >
+                 <Database className="w-5 h-5 mr-2" /> Wgraj Przykładowe Produkty
+               </button>
+             )}
+             <button 
+               onClick={handleAddNew}
+               className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold transition-colors flex items-center justify-center shadow-lg shadow-blue-200"
+             >
+               <Plus className="w-5 h-5 mr-2" /> Dodaj Produkt
+             </button>
+         </div>
       </div>
 
       {/* Filters Stack */}
@@ -203,50 +215,58 @@ export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, o
 
       {/* Inventory Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-         <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[800px]">
-               <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wider">
-                     <th className="p-4 font-bold">Produkt</th>
-                     <th className="p-4 font-bold">Kategoria</th>
-                     <th className="p-4 font-bold text-right">Stan</th>
-                     <th className="p-4 font-bold text-right">Cena</th>
-                     <th className="p-4 font-bold">Info</th>
-                     <th className="p-4 font-bold text-right">Akcje</th>
-                  </tr>
-               </thead>
-               <tbody className="divide-y divide-slate-100">
-                  {filteredInventory.map(item => (
-                    <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
-                       <td className="p-4">
-                          <p className="font-bold text-slate-800 text-sm">{item.name}</p>
-                       </td>
-                       <td className="p-4">
-                          <span className="text-[10px] px-2 py-1 rounded-full font-bold border bg-slate-100 text-slate-600 border-slate-200">
-                             {item.category}
-                          </span>
-                       </td>
-                       <td className="p-4 text-right">
-                          <span className={`font-bold text-sm ${item.quantity <= item.minQuantity ? 'text-red-600' : 'text-slate-700'}`}>
-                            {item.quantity} {item.unit}
-                          </span>
-                       </td>
-                       <td className="p-4 text-right font-medium text-slate-700 text-sm">
-                          {item.price.toLocaleString()} zł
-                       </td>
-                       <td className="p-4 text-xs text-slate-600">
-                          {item.power && `${item.power} ${item.category === ProductCategory.PANEL ? 'W' : 'kW'}`}
-                       </td>
-                       <td className="p-4 text-right">
-                          <button onClick={() => handleEditClick(item)} className="p-2 text-blue-600 bg-blue-50 rounded-lg">
-                             <Edit2 className="w-4 h-4" />
-                          </button>
-                       </td>
+         {filteredInventory.length > 0 ? (
+           <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[800px]">
+                 <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wider">
+                       <th className="p-4 font-bold">Produkt</th>
+                       <th className="p-4 font-bold">Kategoria</th>
+                       <th className="p-4 font-bold text-right">Stan</th>
+                       <th className="p-4 font-bold text-right">Cena</th>
+                       <th className="p-4 font-bold">Info</th>
+                       <th className="p-4 font-bold text-right">Akcje</th>
                     </tr>
-                  ))}
-               </tbody>
-            </table>
-         </div>
+                 </thead>
+                 <tbody className="divide-y divide-slate-100">
+                    {filteredInventory.map(item => (
+                      <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
+                         <td className="p-4">
+                            <p className="font-bold text-slate-800 text-sm">{item.name}</p>
+                         </td>
+                         <td className="p-4">
+                            <span className="text-[10px] px-2 py-1 rounded-full font-bold border bg-slate-100 text-slate-600 border-slate-200">
+                               {item.category}
+                            </span>
+                         </td>
+                         <td className="p-4 text-right">
+                            <span className={`font-bold text-sm ${item.quantity <= item.minQuantity ? 'text-red-600' : 'text-slate-700'}`}>
+                              {item.quantity} {item.unit}
+                            </span>
+                         </td>
+                         <td className="p-4 text-right font-medium text-slate-700 text-sm">
+                            {item.price.toLocaleString()} zł
+                         </td>
+                         <td className="p-4 text-xs text-slate-600">
+                            {item.power && `${item.power} ${item.category === ProductCategory.PANEL ? 'W' : 'kW'}`}
+                         </td>
+                         <td className="p-4 text-right">
+                            <button onClick={() => handleEditClick(item)} className="p-2 text-blue-600 bg-blue-50 rounded-lg">
+                               <Edit2 className="w-4 h-4" />
+                            </button>
+                         </td>
+                      </tr>
+                    ))}
+                 </tbody>
+              </table>
+           </div>
+         ) : (
+           <div className="p-10 text-center text-slate-400">
+             <Package className="w-16 h-16 mx-auto mb-4 opacity-20" />
+             <p className="font-bold">Magazyn jest pusty.</p>
+             <p className="text-sm mt-1">Dodaj produkty ręcznie lub wgraj przykładowe dane.</p>
+           </div>
+         )}
       </div>
       
       {/* Edit Modal (Keeping simplified for brevity, layout is responsive by default) */}

@@ -1,4 +1,5 @@
 
+
 export enum InstallationStatus {
   NEW = 'Nowy',
   AUDIT = 'Audyt',
@@ -20,16 +21,23 @@ export enum ProductCategory {
 
 export enum UserRole {
   ADMIN = 'ADMINISTRATOR',
+  SALES_MANAGER = 'KIEROWNIK SPRZEDAŻY',
   SALES = 'HANDLOWIEC',
   INSTALLER = 'MONTAŻYSTA',
   OFFICE = 'BIURO'
 }
 
 export interface SalesSettings {
-  marginType: 'PERCENT' | 'FIXED';
-  marginPV: number;
-  marginHeat: number;
-  marginStorage: number;
+  location?: string;
+  marginType?: 'PERCENT' | 'FIXED';
+  marginPV: number;      // Fixed amount in PLN or Percent
+  marginHeat: number;    // Fixed amount in PLN or Percent
+  marginStorage: number; // Fixed amount in PLN or Percent
+}
+
+export interface SystemSettings {
+  cat2MarkupType: 'PERCENT' | 'FIXED';
+  cat2MarkupValue: number;
 }
 
 export interface User {
@@ -38,6 +46,8 @@ export interface User {
   role: UserRole;
   email: string;
   salesSettings?: SalesSettings;
+  salesCategory?: '1' | '2';
+  managerId?: string;
 }
 
 export interface Task {
@@ -45,14 +55,14 @@ export interface Task {
   title: string;
   date: string;
   completed: boolean;
-  assignedTo: string; // User ID
-  createdBy: string; // User ID
+  assignedTo: string;
+  createdBy: string;
 }
 
 export interface Message {
   id: string;
   fromId: string;
-  toId: string; // 'OFFICE' | 'ADMIN' | specific User ID
+  toId: string;
   content: string;
   date: string;
   read: boolean;
@@ -63,12 +73,16 @@ export interface UploadedFile {
   name: string;
   type: string;
   dateUploaded: string;
-  url?: string; // Preview URL for images
+  url?: string;
 }
 
-export type RoofType = 'DACHOWKA' | 'BLACHA' | 'PLASKI' | 'GRUNT';
-
 export type TariffType = 'G11' | 'G12' | 'G12w' | 'C11' | 'C12a' | 'C12b';
+
+// Updated Calculator Types
+export type InstallationType = 'ROOF' | 'GROUND';
+export type RoofSlope = 'FLAT' | 'PITCHED';
+export type RoofMaterial = 'DACHOWKA' | 'BLACHA' | 'BLACHODACHOWKA' | 'PAPA' | 'GONTY' | 'TRAPEZ';
+export type Orientation = 'SOUTH' | 'EAST_WEST';
 
 export interface CalculatorState {
   step: number;
@@ -80,15 +94,17 @@ export interface CalculatorState {
     name: string;
     address: string;
     phone: string;
+    email: string;
   };
 
   // Step 2: Energy
   tariff: TariffType;
+  phases: 1 | 3; // New: 1-phase or 3-phase
   consumption: number;
-  connectionPower: number; // Moc przyłączeniowa in kW
-  pricePerKwh: number; // Treated as Peak Price (Strefa dzienna/I)
-  priceOffPeak?: number; // Optional, for dual zone (Strefa nocna/II)
-  percentOffPeak?: number; // % of usage in off-peak zone (0-100)
+  connectionPower: number;
+  pricePerKwh: number;
+  priceOffPeak?: number;
+  percentOffPeak?: number;
   
   // Step 3: Core Components
   panelId: string;
@@ -96,16 +112,22 @@ export interface CalculatorState {
   inverterId: string;
   storageId: string;
   storageCount: number;
+  connectionPowerWarningAccepted: boolean; // New: User explicit acceptance
 
   // Step 4: Mounting & Addons
-  roofType: RoofType;
-  trenchLength: number; // for Ground
-  mountingSystemId: string; // From inventory
+  installationType: InstallationType; // New
+  roofSlope?: RoofSlope; // New
+  roofMaterial?: RoofMaterial; // New
+  trenchLength: number; // Only for Ground
+  mountingSystemId: string;
+  orientation: Orientation; // New
+  
   hasEMS: boolean;
   hasUPS: boolean;
 
   // Step 5: Financials
-  subsidyMojPrad: boolean; 
+  subsidyMojPradPV: boolean; // Changed: Specific for PV 
+  subsidyMojPradStorage: boolean; // Changed: Specific for Storage
   subsidyCzystePowietrze: boolean;
   taxRelief: 'NONE' | '12' | '32'; 
 }
@@ -116,7 +138,9 @@ export interface Offer {
   dateCreated: string;
   finalPrice: number;
   calculatorState: CalculatorState;
-  status?: 'DRAFT' | 'ACCEPTED'; // Track if offer was accepted
+  status?: 'DRAFT' | 'ACCEPTED';
+  appliedMarkup?: number;
+  personalMarkup?: number; // New: Track personal margin
 }
 
 export interface Customer {
@@ -126,7 +150,7 @@ export interface Customer {
   phone: string;
   address: string;
   notes: string;
-  repId?: string; // ID of the Sales Rep who owns this customer
+  repId?: string;
   files?: UploadedFile[];
   auditPhotos?: UploadedFile[];
   offers?: Offer[];
@@ -141,18 +165,19 @@ export interface InventoryItem {
   price: number;
   unit: string;
   warranty: string;
-  power?: number;   // Optional (Panels & Energy Storage)
-  capacity?: number; // New field (Energy Storage, in kWh)
-  url?: string;     // URL to supplier/shop
-  dateAdded?: string; // ISO Date string
+  power?: number;   // kW for Inverters/Storage, W for Panels
+  capacity?: number; // kWh
+  phases?: 1 | 3; // New: For Inverters
+  url?: string;
+  dateAdded?: string;
 }
 
 export interface PaymentEntry {
   id: string;
   date: string;
   amount: number;
-  recordedBy: string; // Name of the user who added it
-  comment?: string; // Optional description (e.g. Zaliczka)
+  recordedBy: string;
+  comment?: string;
 }
 
 export interface Installation {
@@ -162,21 +187,19 @@ export interface Installation {
   systemSizeKw: number;
   status: InstallationStatus;
   dateScheduled?: string;
-  assignedTeam?: string; // Can match User ID for installers
+  assignedTeam?: string;
   notes?: string;
   
-  // Hardware details from accepted offer
   panelModel?: string;
   inverterModel?: string;
   storageModel?: string;
-  storageSizeKw?: number; // Capacity in kWh
-  mountingSystem?: string; // e.g. "Dachówka - K2 System"
-  trenchLength?: number; // Only for Ground
+  storageSizeKw?: number;
+  mountingSystem?: string;
+  trenchLength?: number;
 
-  // Payment tracking
-  price: number;       // Total contract value
-  paidAmount: number;  // Amount paid so far
+  price: number;
+  paidAmount: number;
   paymentHistory?: PaymentEntry[];
 }
 
-export type ViewState = 'DASHBOARD' | 'CUSTOMERS' | 'INSTALLATIONS' | 'INVENTORY' | 'APPLICATIONS' | 'SALES_ROOM';
+export type ViewState = 'DASHBOARD' | 'CUSTOMERS' | 'INSTALLATIONS' | 'INVENTORY' | 'APPLICATIONS' | 'EMPLOYEES';

@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Sun, Lock, Mail, ArrowRight, AlertCircle } from 'lucide-react';
+import { Sun, Lock, User, ArrowRight, AlertCircle } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 
 interface LoginProps {
@@ -8,12 +8,10 @@ interface LoginProps {
 }
 
 export const Login: React.FC<LoginProps> = ({ onLogin }) => {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState(''); // Email or Name
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [name, setName] = useState(''); 
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,34 +19,41 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setIsLoading(true);
 
     try {
-      if (isSignUp) {
-        const { error: signUpError } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              name: name,
-              role: 'HANDLOWIEC' 
-            }
-          }
-        });
-        if (signUpError) throw signUpError;
-        alert("Rejestracja udana! Sprawdź email, aby potwierdzić konto, lub uruchom skrypt SQL 'confirm_email.sql' w Supabase.");
-        setIsSignUp(false);
-      } else {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (signInError) throw signInError;
-        onLogin();
+      let emailToLogin = identifier;
+
+      // Logic: If input doesn't look like an email, try to find the email by name in 'profiles'
+      if (!identifier.includes('@')) {
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('email')
+          .eq('name', identifier)
+          .single();
+
+        if (profileError || !profile) {
+          throw new Error("Nie znaleziono użytkownika o takiej nazwie.");
+        }
+        emailToLogin = profile.email;
       }
+
+      // Proceed with Supabase Auth
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: emailToLogin,
+        password,
+      });
+
+      if (signInError) throw signInError;
+      
+      // onLogin(); // Removed in favor of reload below
+      
+      // Force reload to ensure clean state and fresh data fetching in App.tsx
+      window.location.reload();
+      
     } catch (err: any) {
       console.error("Auth error:", err);
       if (err.message && err.message.includes("Email not confirmed")) {
         setError("Adres email nie został potwierdzony. Sprawdź skrzynkę pocztową.");
       } else if (err.message && err.message.includes("Invalid login credentials")) {
-        setError("Błędny email lub hasło.");
+        setError("Błędne dane logowania.");
       } else {
         setError(err.message || "Błąd logowania");
       }
@@ -73,36 +78,22 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           </div>
           <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">Family CRM</h1>
           <p className="text-slate-400 mt-2 text-sm md:text-base">
-            {isSignUp ? 'Utwórz nowe konto' : 'Zaloguj się do systemu'}
+            Panel logowania pracowników
           </p>
         </div>
 
         <form onSubmit={handleAuth} className="space-y-4 md:space-y-6">
           <div className="space-y-4">
-            {isSignUp && (
-              <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase mb-2 ml-1">Imię i Nazwisko</label>
+            <div>
+              <label className="block text-xs font-bold text-slate-300 uppercase mb-2 ml-1">Email lub Nazwa Użytkownika</label>
+              <div className="relative group">
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-amber-400 transition-colors" />
                 <input 
                   type="text" 
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-slate-800/50 border border-slate-600 text-white px-4 py-3 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none placeholder:text-slate-500"
-                  placeholder="Jan Kowalski"
-                  required
-                />
-              </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-bold text-slate-300 uppercase mb-2 ml-1">Adres Email</label>
-              <div className="relative group">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-amber-400 transition-colors" />
-                <input 
-                  type="email" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
                   className="w-full bg-slate-800/50 border border-slate-600 text-white pl-12 pr-4 py-3 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all placeholder:text-slate-500"
-                  placeholder="nazwa@firma.pl"
+                  placeholder="nazwa@firma.pl lub Jan Kowalski"
                   required
                 />
               </div>
@@ -140,22 +131,16 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
             ) : (
               <>
-                {isSignUp ? 'Zarejestruj się' : 'Zaloguj się'} <ArrowRight className="w-5 h-5 ml-2" />
+                 Zaloguj się <ArrowRight className="w-5 h-5 ml-2" />
               </>
             )}
           </button>
         </form>
 
         <div className="mt-8 pt-6 border-t border-white/10 text-center">
-          <p className="text-xs text-slate-500 mb-2">
-             {isSignUp ? 'Masz już konto?' : 'Nie masz konta?'}
+          <p className="text-xs text-slate-500">
+             Nie masz konta? Skontaktuj się z administratorem.
           </p>
-          <button 
-            onClick={() => setIsSignUp(!isSignUp)}
-            className="text-amber-400 hover:text-amber-300 font-bold text-sm"
-          >
-             {isSignUp ? 'Zaloguj się' : 'Utwórz konto'}
-          </button>
         </div>
       </div>
     </div>

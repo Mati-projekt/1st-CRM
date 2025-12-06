@@ -1,6 +1,7 @@
 
+
 import React from 'react';
-import { LayoutDashboard, Users, Wrench, Package, Sun, Grid, UserCircle, Briefcase, LogOut, X } from 'lucide-react';
+import { LayoutDashboard, Users, Wrench, Package, Sun, Grid, UserCircle, LogOut, X, UserCog } from 'lucide-react';
 import { ViewState, User, UserRole } from '../types';
 
 interface SidebarProps {
@@ -19,12 +20,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, cur
     switch (role) {
       case UserRole.ADMIN:
         return true; // Access everything
+      case UserRole.SALES_MANAGER:
+        return ['DASHBOARD', 'CUSTOMERS', 'INSTALLATIONS', 'APPLICATIONS'].includes(view);
       case UserRole.SALES:
-        return ['SALES_ROOM', 'CUSTOMERS', 'INSTALLATIONS', 'APPLICATIONS'].includes(view);
+        return ['DASHBOARD', 'CUSTOMERS', 'INSTALLATIONS', 'APPLICATIONS'].includes(view);
       case UserRole.INSTALLER:
         return ['INSTALLATIONS', 'INVENTORY'].includes(view);
       case UserRole.OFFICE:
-        return ['CUSTOMERS', 'INSTALLATIONS', 'INVENTORY'].includes(view); // Removed DASHBOARD
+        return ['DASHBOARD', 'CUSTOMERS', 'INSTALLATIONS', 'INVENTORY'].includes(view);
       default:
         return false;
     }
@@ -32,12 +35,24 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, cur
 
   const menuItems = [
     { id: 'DASHBOARD', label: 'Pulpit', icon: LayoutDashboard },
-    { id: 'SALES_ROOM', label: 'Pokój Handlowca', icon: Briefcase },
     { id: 'CUSTOMERS', label: 'Klienci', icon: Users },
     { id: 'INSTALLATIONS', label: 'Montaże', icon: Wrench },
     { id: 'INVENTORY', label: 'Magazyn', icon: Package },
     { id: 'APPLICATIONS', label: 'Aplikacja', icon: Grid },
+    { id: 'EMPLOYEES', label: 'Pracownicy', icon: UserCog },
   ];
+
+  // Map roles to Polish labels
+  const getRoleLabel = (role: UserRole) => {
+    switch (role) {
+      case UserRole.ADMIN: return 'Administrator';
+      case UserRole.SALES_MANAGER: return 'Kierownik Sprzedaży';
+      case UserRole.SALES: return 'Handlowiec';
+      case UserRole.INSTALLER: return 'Montażysta';
+      case UserRole.OFFICE: return 'Biuro';
+      default: return role;
+    }
+  };
 
   const visibleMenuItems = menuItems.filter(item => canAccess(currentUser.role, item.id as ViewState));
 
@@ -84,7 +99,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, cur
           </div>
           <div className="overflow-hidden flex-1">
             <p className="text-sm font-bold text-white truncate">{currentUser.name}</p>
-            <p className="text-[10px] text-blue-400 uppercase tracking-wider font-bold">{currentUser.role}</p>
+            <p className="text-[10px] text-blue-400 uppercase tracking-wider font-bold truncate">
+              {getRoleLabel(currentUser.role)}
+            </p>
           </div>
         </div>
 
