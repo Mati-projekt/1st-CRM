@@ -217,146 +217,141 @@ const App: React.FC = () => {
   useEffect(() => {
     let mounted = true;
 
+    // Safety timeout to ensure loading screen doesn't get stuck forever
     const safetyTimeout = setTimeout(() => {
       if (mounted && loading) {
-        console.warn("Session check timed out - forcing load complete.");
         setLoading(false);
       }
     }, 3000); 
 
     const syncProfile = async (sessionUser: any) => {
-      const { data: authProfile } = await supabase.from('profiles').select('*').eq('id', sessionUser.id).single();
-      const { data: crmProfile } = await supabase.from('profiles').select('*').ilike('email', sessionUser.email).neq('id', sessionUser.id).single();
+      if (!sessionUser) return null;
 
-      if (crmProfile) {
-         console.log("Synchronizacja profilu CRM...");
-         const crmId = crmProfile.id;
-         const authId = sessionUser.id;
+      try {
+        const { data: authProfile } = await supabase.from('profiles').select('*').eq('id', sessionUser.id).single();
+        const { data: crmProfile } = await supabase.from('profiles').select('*').ilike('email', sessionUser.email).neq('id', sessionUser.id).single();
 
-         if (authProfile) {
-            await supabase.from('profiles').update({
-                role: crmProfile.role,
-                sales_category: crmProfile.sales_category,
-                manager_id: crmProfile.manager_id,
-                sales_settings: crmProfile.sales_settings,
-                name: crmProfile.name
-            }).eq('id', authId);
+        if (crmProfile) {
+           console.log("Synchronizacja profilu CRM...");
+           const crmId = crmProfile.id;
+           const authId = sessionUser.id;
 
-            // Update FK references to the new ID
-            await supabase.from('customers').update({ rep_id: authId }).eq('rep_id', crmId);
-            await supabase.from('installations').update({ assigned_team: authId }).eq('assigned_team', crmId);
-            await supabase.from('tasks').update({ assignedTo: authId }).eq('assignedTo', crmId);
-            await supabase.from('tasks').update({ createdBy: authId }).eq('createdBy', crmId);
-            await supabase.from('messages').update({ fromId: authId }).eq('fromId', crmId);
-            await supabase.from('messages').update({ toId: authId }).eq('toId', crmId);
-            await supabase.from('profiles').update({ manager_id: authId }).eq('manager_id', crmId);
-
-            await supabase.from('profiles').delete().eq('id', crmId);
-            
-            return {
-              id: authId,
-              name: crmProfile.name,
-              email: sessionUser.email,
-              role: crmProfile.role, 
-              salesCategory: crmProfile.sales_category,
-              managerId: crmProfile.manager_id,
-              salesSettings: crmProfile.sales_settings
-            };
-
-         } else {
-            const { error: updateError } = await supabase.from('profiles').update({ id: authId }).eq('id', crmId);
-            if (!updateError) {
-               return {
-                  id: authId,
-                  name: crmProfile.name,
-                  email: crmProfile.email,
+           if (authProfile) {
+              // Merge logic: If both exist, keep Auth ID but take properties from CRM ID
+              await supabase.from('profiles').update({
                   role: crmProfile.role,
-                  salesCategory: crmProfile.sales_category,
-                  managerId: crmProfile.manager_id,
-                  salesSettings: crmProfile.sales_settings
-               };
-            }
-         }
-      } 
-      
-      if (authProfile) {
-        return {
-          id: authProfile.id, 
-          name: authProfile.name,
-          email: authProfile.email,
-          role: authProfile.role,
-          salesCategory: authProfile.sales_category,
-          managerId: authProfile.manager_id,
-          salesSettings: authProfile.sales_settings
-        };
-      } 
-      
-      const newProfile = {
-        id: sessionUser.id,
-        name: sessionUser.user_metadata?.name || sessionUser.email?.split('@')[0] || 'Użytkownik',
-        email: sessionUser.email || '',
-        role: UserRole.SALES, 
-        sales_category: '1'
-      };
+                  sales_category: crmProfile.sales_category,
+                  manager_id: crmProfile.manager_id,
+                  sales_settings: crmProfile.sales_settings,
+                  name: crmProfile.name
+              }).eq('id', authId);
 
-      const { error: insertError } = await supabase.from('profiles').insert([newProfile]);
-      
-      if (!insertError) {
-        return {
-          id: newProfile.id,
-          name: newProfile.name,
-          email: newProfile.email,
-          role: newProfile.role,
-          salesCategory: '1'
+              // Update references
+              await supabase.from('customers').update({ rep_id: authId }).eq('rep_id', crmId);
+              await supabase.from('installations').update({ assigned_team: authId }).eq('assigned_team', crmId);
+              await supabase.from('tasks').update({ assignedTo: authId }).eq('assignedTo', crmId);
+              await supabase.from('tasks').update({ createdBy: authId }).eq('createdBy', crmId);
+              await supabase.from('messages').update({ fromId: authId }).eq('fromId', crmId);
+              await supabase.from('messages').update({ toId: authId }).eq('toId', crmId);
+              await supabase.from('profiles').update({ manager_id: authId }).eq('manager_id', crmId);
+
+              await supabase.from('profiles').delete().eq('id', crmId);
+              
+              return {
+                id: authId,
+                name: crmProfile.name,
+                email: sessionUser.email,
+                role: crmProfile.role, 
+                salesCategory: crmProfile.sales_category,
+                managerId: crmProfile.manager_id,
+                salesSettings: crmProfile.sales_settings
+              };
+
+           } else {
+              // If only CRM profile exists, move it to Auth ID
+              const { error: updateError } = await supabase.from('profiles').update({ id: authId }).eq('id', crmId);
+              if (!updateError) {
+                 return {
+                    id: authId,
+                    name: crmProfile.name,
+                    email: crmProfile.email,
+                    role: crmProfile.role,
+                    salesCategory: crmProfile.sales_category,
+                    managerId: crmProfile.manager_id,
+                    salesSettings: crmProfile.sales_settings
+                 };
+              }
+           }
+        } 
+        
+        if (authProfile) {
+          return {
+            id: authProfile.id, 
+            name: authProfile.name,
+            email: authProfile.email,
+            role: authProfile.role,
+            salesCategory: authProfile.sales_category,
+            managerId: authProfile.manager_id,
+            salesSettings: authProfile.sales_settings
+          };
+        } 
+        
+        // New User (No profile found) - create default
+        const newProfile = {
+          id: sessionUser.id,
+          name: sessionUser.user_metadata?.name || sessionUser.email?.split('@')[0] || 'Użytkownik',
+          email: sessionUser.email || '',
+          role: UserRole.SALES, 
+          sales_category: '1'
         };
+
+        const { error: insertError } = await supabase.from('profiles').insert([newProfile]);
+        
+        if (!insertError) {
+          return {
+            id: newProfile.id,
+            name: newProfile.name,
+            email: newProfile.email,
+            role: newProfile.role,
+            salesCategory: '1'
+          };
+        }
+      } catch (err) {
+        console.error("Profile sync error:", err);
       }
       
       return null;
     };
 
-    const checkUser = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user && mounted) {
-          const user = await syncProfile(session.user);
-          if (user) {
-             setCurrentUser(user);
-          } else {
-             setCurrentUser({
-               id: session.user.id,
-               name: session.user.email || 'User',
-               email: session.user.email || '',
-               role: UserRole.SALES
-             });
-          }
-        } else if (mounted) {
-          setCurrentUser(null);
-        }
-      } catch (e) {
-        console.error("Session check failed", e);
-      } finally {
-        if (mounted) {
-          setLoading(false);
-          clearTimeout(safetyTimeout);
-        }
-      }
-    };
-
-    checkUser();
-
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user && mounted) {
-         if (event === 'SIGNED_IN') {
+      console.log("Auth Event:", event);
+      if (session?.user) {
+         // Only run heavy sync on explicit sign-in or initialization
+         if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
              const user = await syncProfile(session.user);
-             if (user) setCurrentUser(user);
-         } else {
-             if (!currentUser) {
-                 const user = await syncProfile(session.user);
-                 if (user) setCurrentUser(user);
+             if (mounted) {
+               if (user) {
+                 setCurrentUser(user);
+               } else {
+                 // If sync fails completely, log out to prevent half-state
+                 await supabase.auth.signOut();
+                 setCurrentUser(null);
+               }
+               setLoading(false);
              }
+         } else if (currentUser === null && mounted) {
+             // Recover session if state was lost but session exists
+             const user = await syncProfile(session.user);
+             if (user) {
+               setCurrentUser(user);
+             }
+             setLoading(false);
          }
-      } else if (mounted) {
-        setCurrentUser(null);
+      } else {
+        if (mounted) {
+           setCurrentUser(null);
+           setLoading(false);
+        }
       }
     });
 
@@ -377,8 +372,14 @@ const App: React.FC = () => {
 
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    window.location.reload();
+    try {
+      await supabase.auth.signOut();
+      setCurrentUser(null);
+      // Optional: window.location.reload() can be used here for total cleanup, 
+      // but simpler state reset is usually enough for SPA.
+    } catch (e) {
+      console.error("Logout error", e);
+    }
   };
 
   // --- FILTERING LOGIC ---

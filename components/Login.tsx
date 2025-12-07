@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sun, Lock, User, ArrowRight, AlertCircle } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 
@@ -13,21 +12,36 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Safety timeout to reset loading state if something hangs indefinitely
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout>;
+    if (isLoading) {
+      timeout = setTimeout(() => {
+        if (isLoading) {
+          setIsLoading(false);
+          // Don't show error if it might have actually succeeded in background, 
+          // just unlock the button so user can try again if needed.
+        }
+      }, 10000); // 10s safety valve
+    }
+    return () => clearTimeout(timeout);
+  }, [isLoading]);
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
 
     try {
-      let emailToLogin = identifier;
+      let emailToLogin = identifier.trim();
 
       // Logic: If input doesn't look like an email, try to find the email by name in 'profiles'
-      if (!identifier.includes('@')) {
+      if (!emailToLogin.includes('@')) {
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('email')
-          .eq('name', identifier)
-          .single();
+          .ilike('name', emailToLogin) // Case insensitive check
+          .maybeSingle();
 
         if (profileError || !profile) {
           throw new Error("Nie znaleziono użytkownika o takiej nazwie.");
@@ -36,20 +50,21 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       }
 
       // Proceed with Supabase Auth
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email: emailToLogin,
         password,
       });
 
       if (signInError) throw signInError;
       
-      // onLogin(); // Removed in favor of reload below
-      
-      // Force reload to ensure clean state and fresh data fetching in App.tsx
-      window.location.reload();
+      // CRITICAL CHANGE: Do NOT reload the page. 
+      // Allow the onAuthStateChange listener in App.tsx to detect the session 
+      // and unmount this component naturally. This fixes the mobile race condition.
       
     } catch (err: any) {
       console.error("Auth error:", err);
+      setIsLoading(false); // Only stop loading on error
+      
       if (err.message && err.message.includes("Email not confirmed")) {
         setError("Adres email nie został potwierdzony. Sprawdź skrzynkę pocztową.");
       } else if (err.message && err.message.includes("Invalid login credentials")) {
@@ -57,8 +72,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       } else {
         setError(err.message || "Błąd logowania");
       }
-    } finally {
-      setIsLoading(false);
     }
   };
 
