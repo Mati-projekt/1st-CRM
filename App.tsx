@@ -215,7 +215,45 @@ const App: React.FC = () => {
     }
   };
 
-  // --- AUTH LISTENER & TIMEOUT ---
+  // --- SAFETY TIMEOUT ---
+  // If loading gets stuck for > 4 seconds (e.g. tab resume race condition), force unlock
+  useEffect(() => {
+    let safetyTimer: ReturnType<typeof setTimeout>;
+    if (loading) {
+       safetyTimer = setTimeout(() => {
+          if (loading) {
+             console.warn("Loading timeout reached. Forcing unlock.");
+             setLoading(false);
+          }
+       }, 4000);
+    }
+    return () => clearTimeout(safetyTimer);
+  }, [loading]);
+
+  // --- TAB VISIBILITY LISTENER ---
+  // When coming back to the tab, check session silently without blocking UI
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible') {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+           // Token expired or invalid
+           setCurrentUser(null);
+        } else if (!currentUser) {
+           // Session exists but app state empty? Reload user.
+           setLoading(true); // Short loading is okay here
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [currentUser]);
+
+
+  // --- AUTH LISTENER ---
   useEffect(() => {
     let mounted = true;
 
@@ -227,7 +265,6 @@ const App: React.FC = () => {
         const { data: authProfile } = await supabase.from('profiles').select('*').eq('id', sessionUser.id).maybeSingle();
         
         // 2. Try to find "Shadow Profile" (created by Admin via CRM)
-        // This handles the "Merge" logic when a user first logs in
         const { data: crmProfile } = await supabase.from('profiles').select('*').ilike('email', sessionUser.email).neq('id', sessionUser.id).maybeSingle();
 
         if (crmProfile) {
@@ -235,8 +272,7 @@ const App: React.FC = () => {
            const authId = sessionUser.id;
 
            if (authProfile) {
-              // Merge: Auth profile exists, but we found a shadow profile too. 
-              // Usually we trust the Admin's shadow profile data (Role etc) more for the first sync.
+              // Merge Logic
               await supabase.from('profiles').update({
                   role: crmProfile.role,
                   sales_category: crmProfile.sales_category,
@@ -245,15 +281,12 @@ const App: React.FC = () => {
                   name: crmProfile.name
               }).eq('id', authId);
 
-              // Migrate relationships
               await supabase.from('customers').update({ rep_id: authId }).eq('rep_id', crmId);
               await supabase.from('installations').update({ assigned_team: authId }).eq('assigned_team', crmId);
               await supabase.from('tasks').update({ assignedTo: authId }).eq('assignedTo', crmId);
               await supabase.from('messages').update({ fromId: authId }).eq('fromId', crmId);
               await supabase.from('messages').update({ toId: authId }).eq('toId', crmId);
               await supabase.from('profiles').update({ manager_id: authId }).eq('manager_id', crmId);
-
-              // Delete shadow
               await supabase.from('profiles').delete().eq('id', crmId);
               
               return {
@@ -267,7 +300,7 @@ const App: React.FC = () => {
               };
 
            } else {
-              // Only Shadow exists. Move it to Auth ID.
+              // Shadow Move Logic
               const { error: updateError } = await supabase.from('profiles').update({ id: authId }).eq('id', crmId);
               if (!updateError) {
                  return {
@@ -295,7 +328,7 @@ const App: React.FC = () => {
           };
         } 
         
-        // 3. New User (No profile found) - create default
+        // 3. New User (No profile found)
         const newProfile = {
           id: sessionUser.id,
           name: sessionUser.user_metadata?.name || sessionUser.email?.split('@')[0] || 'Użytkownik',
@@ -319,7 +352,6 @@ const App: React.FC = () => {
         console.error("Profile sync error:", err);
       }
       
-      // Fallback: Return basic session user if DB fails, so they aren't locked out
       return {
         id: sessionUser.id,
         name: sessionUser.email?.split('@')[0] || 'Użytkownik',
@@ -328,33 +360,32 @@ const App: React.FC = () => {
       };
     };
 
-    // --- MAIN INITIALIZATION LOGIC ---
+    // --- MAIN AUTH INIT ---
     const initializeAuth = async () => {
        setLoading(true);
        
-       // 1. Check active session immediately
        const { data: { session } } = await supabase.auth.getSession();
        
        if (session?.user) {
-          // Session exists, sync profile
           const user = await syncProfile(session.user);
           if (mounted) {
              if (user) setCurrentUser(user);
              setLoading(false);
           }
        } else {
-          // No session
           if (mounted) setLoading(false);
        }
 
-       // 2. Set up listener for future changes
        const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
           if (event === 'SIGNED_IN') {
-             setLoading(true);
-             const user = await syncProfile(session?.user);
-             if (mounted) {
-                if (user) setCurrentUser(user);
-                setLoading(false);
+             // Optimized: Don't trigger full loading if we already have the user (prevents spinner on tab resume)
+             if (!currentUser || currentUser.id !== session?.user.id) {
+                 setLoading(true);
+                 const user = await syncProfile(session?.user);
+                 if (mounted) {
+                    if (user) setCurrentUser(user);
+                    setLoading(false);
+                 }
              }
           } else if (event === 'SIGNED_OUT') {
              if (mounted) {
@@ -362,6 +393,7 @@ const App: React.FC = () => {
                 setLoading(false);
              }
           }
+          // Ignored events: TOKEN_REFRESHED, USER_UPDATED (to prevent UI flicker)
        });
 
        return () => {
@@ -374,7 +406,7 @@ const App: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, []); // Intentionally empty dependency array to run once
 
   useEffect(() => {
     if (currentUser) {
