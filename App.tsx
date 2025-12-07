@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
@@ -224,12 +225,14 @@ const App: React.FC = () => {
       }
     }, 3000); 
 
-    const syncProfile = async (sessionUser: any) => {
+    const syncProfile = async (sessionUser: any): Promise<User | null> => {
       if (!sessionUser) return null;
 
       try {
-        const { data: authProfile } = await supabase.from('profiles').select('*').eq('id', sessionUser.id).single();
-        const { data: crmProfile } = await supabase.from('profiles').select('*').ilike('email', sessionUser.email).neq('id', sessionUser.id).single();
+        const { data: authProfile } = await supabase.from('profiles').select('*').eq('id', sessionUser.id).maybeSingle();
+        
+        // Use maybeSingle() to avoid error if no duplicate profile exists (this was causing the crash!)
+        const { data: crmProfile } = await supabase.from('profiles').select('*').ilike('email', sessionUser.email).neq('id', sessionUser.id).maybeSingle();
 
         if (crmProfile) {
            console.log("Synchronizacja profilu CRM...");
@@ -261,8 +264,8 @@ const App: React.FC = () => {
                 id: authId,
                 name: crmProfile.name,
                 email: sessionUser.email,
-                role: crmProfile.role, 
-                salesCategory: crmProfile.sales_category,
+                role: crmProfile.role as UserRole, 
+                salesCategory: (crmProfile.sales_category as '1' | '2') || undefined,
                 managerId: crmProfile.manager_id,
                 salesSettings: crmProfile.sales_settings
               };
@@ -275,8 +278,8 @@ const App: React.FC = () => {
                     id: authId,
                     name: crmProfile.name,
                     email: crmProfile.email,
-                    role: crmProfile.role,
-                    salesCategory: crmProfile.sales_category,
+                    role: crmProfile.role as UserRole,
+                    salesCategory: (crmProfile.sales_category as '1' | '2') || undefined,
                     managerId: crmProfile.manager_id,
                     salesSettings: crmProfile.sales_settings
                  };
@@ -289,8 +292,8 @@ const App: React.FC = () => {
             id: authProfile.id, 
             name: authProfile.name,
             email: authProfile.email,
-            role: authProfile.role,
-            salesCategory: authProfile.sales_category,
+            role: authProfile.role as UserRole,
+            salesCategory: (authProfile.sales_category as '1' | '2') || undefined,
             managerId: authProfile.manager_id,
             salesSettings: authProfile.sales_settings
           };
@@ -334,6 +337,7 @@ const App: React.FC = () => {
                  setCurrentUser(user);
                } else {
                  // If sync fails completely, log out to prevent half-state
+                 console.warn("Sync failed, logging out to prevent inconsistent state");
                  await supabase.auth.signOut();
                  setCurrentUser(null);
                }
@@ -375,8 +379,6 @@ const App: React.FC = () => {
     try {
       await supabase.auth.signOut();
       setCurrentUser(null);
-      // Optional: window.location.reload() can be used here for total cleanup, 
-      // but simpler state reset is usually enough for SPA.
     } catch (e) {
       console.error("Logout error", e);
     }

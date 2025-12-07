@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Sun, Lock, User, ArrowRight, AlertCircle } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
@@ -57,9 +58,12 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
       if (signInError) throw signInError;
       
-      // CRITICAL CHANGE: Do NOT reload the page. 
-      // Allow the onAuthStateChange listener in App.tsx to detect the session 
-      // and unmount this component naturally. This fixes the mobile race condition.
+      // CRITICAL CHANGE: 
+      // Add a small fallback delay. If App.tsx catches the session, this component unmounts.
+      // If for some reason (mobile race condition) it doesn't, force a reload to ensure fresh state.
+      setTimeout(() => {
+         window.location.reload();
+      }, 1000);
       
     } catch (err: any) {
       console.error("Auth error:", err);

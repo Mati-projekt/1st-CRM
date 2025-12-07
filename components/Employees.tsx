@@ -1,4 +1,5 @@
 
+
 import React, { useState } from 'react';
 import { User, UserRole, SystemSettings } from '../types';
 import { Users, Plus, Save, Trash2, UserCog, Settings, ShieldCheck, UserCircle, X, Edit2, Check, Mail, Lock } from 'lucide-react';
@@ -48,11 +49,8 @@ export const Employees: React.FC<EmployeesProps> = ({
     const userToAdd = { ...newUser };
     if (userToAdd.role !== UserRole.SALES) {
        // Only sales reps need categories and managers
-       // However, keep fields distinct if you expand logic later
-       if (userToAdd.role !== UserRole.SALES) {
-         delete userToAdd.salesCategory;
-         delete userToAdd.managerId;
-       }
+       delete userToAdd.salesCategory;
+       delete userToAdd.managerId;
     }
     
     onAddUser(userToAdd, newPassword);
