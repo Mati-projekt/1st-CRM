@@ -49,14 +49,8 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         emailToLogin = profile.email;
       }
 
-      // Configure persistence based on checkbox
-      // browserLocalPersistence = LocalStorage (Survives close)
-      // browserSessionPersistence = SessionStorage (Dies on close)
-      await supabase.auth.setPersistence(
-         rememberMe ? 'local' : 'session'
-      );
-
       // Proceed with Supabase Auth
+      // Note: Persistence is configured globally in supabaseClient.ts (localStorage)
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email: emailToLogin,
         password,
