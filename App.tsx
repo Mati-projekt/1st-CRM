@@ -219,21 +219,15 @@ const App: React.FC = () => {
   useEffect(() => {
     let mounted = true;
 
-    // Safety timeout to ensure loading screen doesn't get stuck forever
-    const safetyTimeout = setTimeout(() => {
-      if (mounted && loading) {
-        setLoading(false);
-      }
-    }, 3000); 
-
+    // Helper to sync profile
     const syncProfile = async (sessionUser: any): Promise<User | null> => {
       if (!sessionUser) return null;
-
       try {
-        const { data: authProfile, error: authProfileError } = await supabase.from('profiles').select('*').eq('id', sessionUser.id).maybeSingle();
+        // 1. Try to find profile by Auth ID (Standard)
+        const { data: authProfile } = await supabase.from('profiles').select('*').eq('id', sessionUser.id).maybeSingle();
         
-        // Use maybeSingle() to avoid error if no duplicate profile exists (this was causing the crash!)
-        // Note: This query might fail if RLS prevents reading other users by email.
+        // 2. Try to find "Shadow Profile" (created by Admin via CRM)
+        // This handles the "Merge" logic when a user first logs in
         const { data: crmProfile } = await supabase.from('profiles').select('*').ilike('email', sessionUser.email).neq('id', sessionUser.id).maybeSingle();
 
         if (crmProfile) {
@@ -241,7 +235,8 @@ const App: React.FC = () => {
            const authId = sessionUser.id;
 
            if (authProfile) {
-              // Merge logic: If both exist, keep Auth ID but take properties from CRM ID
+              // Merge: Auth profile exists, but we found a shadow profile too. 
+              // Usually we trust the Admin's shadow profile data (Role etc) more for the first sync.
               await supabase.from('profiles').update({
                   role: crmProfile.role,
                   sales_category: crmProfile.sales_category,
@@ -250,15 +245,15 @@ const App: React.FC = () => {
                   name: crmProfile.name
               }).eq('id', authId);
 
-              // Update references
+              // Migrate relationships
               await supabase.from('customers').update({ rep_id: authId }).eq('rep_id', crmId);
               await supabase.from('installations').update({ assigned_team: authId }).eq('assigned_team', crmId);
               await supabase.from('tasks').update({ assignedTo: authId }).eq('assignedTo', crmId);
-              await supabase.from('tasks').update({ createdBy: authId }).eq('createdBy', crmId);
               await supabase.from('messages').update({ fromId: authId }).eq('fromId', crmId);
               await supabase.from('messages').update({ toId: authId }).eq('toId', crmId);
               await supabase.from('profiles').update({ manager_id: authId }).eq('manager_id', crmId);
 
+              // Delete shadow
               await supabase.from('profiles').delete().eq('id', crmId);
               
               return {
@@ -272,7 +267,7 @@ const App: React.FC = () => {
               };
 
            } else {
-              // If only CRM profile exists, move it to Auth ID
+              // Only Shadow exists. Move it to Auth ID.
               const { error: updateError } = await supabase.from('profiles').update({ id: authId }).eq('id', crmId);
               if (!updateError) {
                  return {
@@ -300,7 +295,7 @@ const App: React.FC = () => {
           };
         } 
         
-        // New User (No profile found) - create default
+        // 3. New User (No profile found) - create default
         const newProfile = {
           id: sessionUser.id,
           name: sessionUser.user_metadata?.name || sessionUser.email?.split('@')[0] || 'Użytkownik',
@@ -324,54 +319,60 @@ const App: React.FC = () => {
         console.error("Profile sync error:", err);
       }
       
-      // Fallback if DB operations fail (e.g. RLS blocks): Return basic user from session so they are not locked out
-      // They might have limited access but at least can login.
+      // Fallback: Return basic session user if DB fails, so they aren't locked out
       return {
         id: sessionUser.id,
         name: sessionUser.email?.split('@')[0] || 'Użytkownik',
         email: sessionUser.email || '',
-        role: UserRole.SALES // Default fallback
+        role: UserRole.SALES 
       };
     };
 
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // console.log("Auth Event:", event);
-      if (session?.user) {
-         // Only run heavy sync on explicit sign-in or initialization
-         if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
-             setLoading(true);
-             const user = await syncProfile(session.user);
-             if (mounted) {
-               if (user) {
-                 setCurrentUser(user);
-               } else {
-                 // Removed signout here to prevent loops. 
-                 // If sync fails, we just don't set user, but the fallback above should handle it.
-                 console.warn("Sync returned null, but keeping session active to retry later.");
-               }
-               setLoading(false);
-             }
-         } else if (currentUser === null && mounted) {
-             // Recover session if state was lost but session exists
-             setLoading(true);
-             const user = await syncProfile(session.user);
-             if (user) {
-               setCurrentUser(user);
-             }
+    // --- MAIN INITIALIZATION LOGIC ---
+    const initializeAuth = async () => {
+       setLoading(true);
+       
+       // 1. Check active session immediately
+       const { data: { session } } = await supabase.auth.getSession();
+       
+       if (session?.user) {
+          // Session exists, sync profile
+          const user = await syncProfile(session.user);
+          if (mounted) {
+             if (user) setCurrentUser(user);
              setLoading(false);
-         }
-      } else {
-        if (mounted) {
-           setCurrentUser(null);
-           setLoading(false);
-        }
-      }
-    });
+          }
+       } else {
+          // No session
+          if (mounted) setLoading(false);
+       }
+
+       // 2. Set up listener for future changes
+       const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+          if (event === 'SIGNED_IN') {
+             setLoading(true);
+             const user = await syncProfile(session?.user);
+             if (mounted) {
+                if (user) setCurrentUser(user);
+                setLoading(false);
+             }
+          } else if (event === 'SIGNED_OUT') {
+             if (mounted) {
+                setCurrentUser(null);
+                setLoading(false);
+             }
+          }
+       });
+
+       return () => {
+          authListener.subscription.unsubscribe();
+       };
+    };
+
+    initializeAuth();
 
     return () => {
       mounted = false;
-      clearTimeout(safetyTimeout);
-      authListener.subscription.unsubscribe();
     };
   }, []);
 

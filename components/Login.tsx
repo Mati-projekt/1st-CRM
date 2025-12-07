@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Sun, Lock, User, ArrowRight, AlertCircle } from 'lucide-react';
+import { Sun, Lock, User, ArrowRight, AlertCircle, CheckSquare, Square } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 
 interface LoginProps {
@@ -10,6 +10,7 @@ interface LoginProps {
 export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [identifier, setIdentifier] = useState(''); // Email or Name
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -20,8 +21,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       timeout = setTimeout(() => {
         if (isLoading) {
           setIsLoading(false);
-          // Don't show error if it might have actually succeeded in background, 
-          // just unlock the button so user can try again if needed.
         }
       }, 15000); // 15s safety valve
     }
@@ -50,6 +49,13 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         emailToLogin = profile.email;
       }
 
+      // Configure persistence based on checkbox
+      // browserLocalPersistence = LocalStorage (Survives close)
+      // browserSessionPersistence = SessionStorage (Dies on close)
+      await supabase.auth.setPersistence(
+         rememberMe ? 'local' : 'session'
+      );
+
       // Proceed with Supabase Auth
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email: emailToLogin,
@@ -57,9 +63,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       });
 
       if (signInError) throw signInError;
-      
-      // Removed window.location.reload() to prevent session race conditions.
-      // The App.tsx auth listener will handle the redirect automatically.
       
     } catch (err: any) {
       console.error("Auth error:", err);
@@ -125,6 +128,16 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   required
                 />
               </div>
+            </div>
+            
+            <div 
+               className="flex items-center cursor-pointer group" 
+               onClick={() => setRememberMe(!rememberMe)}
+            >
+               <div className={`mr-2 transition-colors ${rememberMe ? 'text-amber-400' : 'text-slate-500'}`}>
+                  {rememberMe ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
+               </div>
+               <span className="text-sm text-slate-300 group-hover:text-white transition-colors">Zapamiętaj mnie</span>
             </div>
           </div>
 

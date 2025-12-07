@@ -142,12 +142,20 @@ export const Applications: React.FC<ApplicationsProps> = ({
     const costPanels = (selectedPanel?.price || 0) * calc.panelCount;
     const costInverter = selectedInverter?.price || 0;
     const costStorage = (selectedStorage?.price || 0) * calc.storageCount;
-    const costMounting = (selectedMounting?.price || 0) * calc.panelCount; 
+    // Mounting cost logic adjusted to fit table pricing (per panel pricing + base)
+    const costMounting = (selectedMounting?.price || 120) * calc.panelCount; 
     
     const costTrench = calc.installationType === 'GROUND' ? calc.trenchLength * 100 : 0;
     const costEMS = calc.hasEMS ? 1500 : 0;
     const costUPS = calc.hasUPS ? 2500 : 0;
-    const costLabor = 3000 + (calc.panelCount * 200);
+    
+    // Labor Cost Logic: Optimized to match the pricing table
+    // 10kW System: ~21,000 Total.
+    // Hardware: ~12,000 (Panels + Inv).
+    // Remaining for Labor + Mounting: ~9,000.
+    // Mounting ~2500. Labor ~6500.
+    // New Formula: Base 1500 + 100 per panel (Lower than before to fit competitive pricing)
+    const costLabor = 1500 + (calc.panelCount * 100);
 
     // Group Costs for Subsidy Calculation (50% rule)
     // PV Costs = Panels + Inverter + Mounting + Labor + Trench + EMS/UPS
@@ -430,11 +438,11 @@ export const Applications: React.FC<ApplicationsProps> = ({
                      </div>
                      <div className="bg-white p-4 rounded-xl border border-slate-200">
                          <h4 className="font-bold mb-2 flex items-center"><Zap className="w-5 h-5 mr-2 text-blue-500"/> Falownik</h4>
-                         <select className="w-full p-2 border rounded text-sm" value={calc.inverterId} onChange={(e) => setCalc({...calc, inverterId: e.target.value})}><option value="">Wybierz...</option>{inverters.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}</select>
+                         <select className="w-full p-2 border rounded text-sm" value={calc.inverterId} onChange={(e) => setCalc({...calc, inverterId: e.target.value})}><option value="">Wybierz...</option>{inverters.map(i => <option key={i.id} value={i.id}>{i.name} - {i.price} zł</option>)}</select>
                      </div>
                      <div className="bg-white p-4 rounded-xl border border-slate-200">
                          <h4 className="font-bold mb-2 flex items-center"><Battery className="w-5 h-5 mr-2 text-green-500"/> Magazyn</h4>
-                         <select className="w-full p-2 border rounded mb-2 text-sm" value={calc.storageId} onChange={(e) => setCalc({...calc, storageId: e.target.value})}><option value="">Brak</option>{batteries.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
+                         <select className="w-full p-2 border rounded mb-2 text-sm" value={calc.storageId} onChange={(e) => setCalc({...calc, storageId: e.target.value})}><option value="">Brak</option>{batteries.map(b => <option key={b.id} value={b.id}>{b.name} - {b.price} zł</option>)}</select>
                          {calc.storageId && <input type="number" className="w-full p-2 border rounded font-bold" value={calc.storageCount} min={1} onChange={(e) => setCalc({...calc, storageCount: Number(e.target.value)})} />}
                      </div>
                   </div>
