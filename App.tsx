@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
@@ -229,9 +230,10 @@ const App: React.FC = () => {
       if (!sessionUser) return null;
 
       try {
-        const { data: authProfile } = await supabase.from('profiles').select('*').eq('id', sessionUser.id).maybeSingle();
+        const { data: authProfile, error: authProfileError } = await supabase.from('profiles').select('*').eq('id', sessionUser.id).maybeSingle();
         
         // Use maybeSingle() to avoid error if no duplicate profile exists (this was causing the crash!)
+        // Note: This query might fail if RLS prevents reading other users by email.
         const { data: crmProfile } = await supabase.from('profiles').select('*').ilike('email', sessionUser.email).neq('id', sessionUser.id).maybeSingle();
 
         if (crmProfile) {
@@ -322,7 +324,14 @@ const App: React.FC = () => {
         console.error("Profile sync error:", err);
       }
       
-      return null;
+      // Fallback if DB operations fail (e.g. RLS blocks): Return basic user from session so they are not locked out
+      // They might have limited access but at least can login.
+      return {
+        id: sessionUser.id,
+        name: sessionUser.email?.split('@')[0] || 'Użytkownik',
+        email: sessionUser.email || '',
+        role: UserRole.SALES // Default fallback
+      };
     };
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -330,20 +339,21 @@ const App: React.FC = () => {
       if (session?.user) {
          // Only run heavy sync on explicit sign-in or initialization
          if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+             setLoading(true);
              const user = await syncProfile(session.user);
              if (mounted) {
                if (user) {
                  setCurrentUser(user);
                } else {
-                 // If sync fails completely, log out to prevent half-state
-                 console.warn("Sync failed, logging out to prevent inconsistent state");
-                 await supabase.auth.signOut();
-                 setCurrentUser(null);
+                 // Removed signout here to prevent loops. 
+                 // If sync fails, we just don't set user, but the fallback above should handle it.
+                 console.warn("Sync returned null, but keeping session active to retry later.");
                }
                setLoading(false);
              }
          } else if (currentUser === null && mounted) {
              // Recover session if state was lost but session exists
+             setLoading(true);
              const user = await syncProfile(session.user);
              if (user) {
                setCurrentUser(user);

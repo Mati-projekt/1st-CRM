@@ -23,7 +23,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           // Don't show error if it might have actually succeeded in background, 
           // just unlock the button so user can try again if needed.
         }
-      }, 10000); // 10s safety valve
+      }, 15000); // 15s safety valve
     }
     return () => clearTimeout(timeout);
   }, [isLoading]);
@@ -58,12 +58,8 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
       if (signInError) throw signInError;
       
-      // CRITICAL CHANGE: 
-      // Add a small fallback delay. If App.tsx catches the session, this component unmounts.
-      // If for some reason (mobile race condition) it doesn't, force a reload to ensure fresh state.
-      setTimeout(() => {
-         window.location.reload();
-      }, 1000);
+      // Removed window.location.reload() to prevent session race conditions.
+      // The App.tsx auth listener will handle the redirect automatically.
       
     } catch (err: any) {
       console.error("Auth error:", err);
