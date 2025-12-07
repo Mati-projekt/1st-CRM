@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Customer, Installation, InstallationStatus, UploadedFile, Offer, UserRole, PaymentEntry, User } from '../types';
 import { Search, Phone, MapPin, Plus, Save, Zap, File as FileIcon, Camera, Image as ImageIcon, ClipboardList, User as UserIcon, FilePieChart, Banknote, History, Check, CheckCircle, Upload, Trash2, Users, FileText, Hammer, X, Shovel, ArrowLeft, Download, Maximize2, Filter, Briefcase, Sun, Wind, Home } from 'lucide-react';
@@ -501,7 +499,6 @@ export const Customers: React.FC<CustomersProps> = ({
                {/* TAB: DATA */}
                {activeTab === 'data' && (
                  <div className="max-w-6xl space-y-6 md:space-y-8 animate-fade-in">
-                    {/* ... (Customer details inputs - kept same as before) ... */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
                        <div className="bg-white p-5 md:p-6 rounded-xl shadow-sm border border-slate-200">
                           <h3 className="text-base md:text-lg font-bold text-slate-800 mb-4 flex items-center">
@@ -637,7 +634,6 @@ export const Customers: React.FC<CustomersProps> = ({
                              <Hammer className="w-5 h-5 mr-2 text-slate-500" /> Dane Techniczne z Kalkulatora
                           </h3>
                           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                             {/* Rodzaj Montażu */}
                              <div className="flex items-center space-x-3 bg-white p-3 rounded-lg border border-slate-200">
                                 <div className="bg-amber-50 p-2 rounded-lg text-amber-600 shrink-0"><Home className="w-5 h-5" /></div>
                                 <div>
@@ -648,8 +644,6 @@ export const Customers: React.FC<CustomersProps> = ({
                                    </p>
                                 </div>
                              </div>
-
-                             {/* Pokrycie / Przekop */}
                              <div className="flex items-center space-x-3 bg-white p-3 rounded-lg border border-slate-200">
                                 <div className="bg-slate-100 p-2 rounded-lg text-slate-600 shrink-0">
                                    {acceptedOffer.calculatorState.installationType === 'ROOF' ? <Hammer className="w-5 h-5"/> : <Shovel className="w-5 h-5"/>}
@@ -665,8 +659,6 @@ export const Customers: React.FC<CustomersProps> = ({
                                    </p>
                                 </div>
                              </div>
-                             
-                             {/* Orientacja */}
                              <div className="flex items-center space-x-3 bg-white p-3 rounded-lg border border-slate-200">
                                 <div className="bg-yellow-50 p-2 rounded-lg text-yellow-600 shrink-0"><Sun className="w-5 h-5" /></div>
                                 <div>
@@ -676,8 +668,6 @@ export const Customers: React.FC<CustomersProps> = ({
                                    </p>
                                 </div>
                              </div>
-
-                             {/* Fazy */}
                              <div className="flex items-center space-x-3 bg-white p-3 rounded-lg border border-slate-200">
                                 <div className="bg-blue-50 p-2 rounded-lg text-blue-600 shrink-0"><Zap className="w-5 h-5" /></div>
                                 <div>
@@ -693,35 +683,9 @@ export const Customers: React.FC<CustomersProps> = ({
                  </div>
                )}
 
-               {/* ... (Rest of tabs: Finances, Offers, Files, Audit, Notes - kept same) ... */}
-               {/* Note: I'm omitting the full code of other tabs to keep the response concise, as only 'Data' tab changed visually for specs */}
-               {activeTab === 'finances' && selectedInstallation && !isInstaller && (
-                  <div className="space-y-8 animate-fade-in max-w-4xl">
-                     {/* ... (Finances content from previous file) ... */}
-                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                           <p className="text-xs font-bold text-slate-400 uppercase mb-1">Całkowita wartość</p>
-                           <p className="text-2xl font-bold text-slate-800">{selectedInstallation.price.toLocaleString()} PLN</p>
-                        </div>
-                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                           <p className="text-xs font-bold text-slate-400 uppercase mb-1">Opłacono</p>
-                           <p className="text-2xl font-bold text-green-600">{selectedInstallation.paidAmount.toLocaleString()} PLN</p>
-                        </div>
-                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                           <p className="text-xs font-bold text-slate-400 uppercase mb-1">Pozostało</p>
-                           <p className="text-2xl font-bold text-red-600">{(selectedInstallation.price - selectedInstallation.paidAmount).toLocaleString()} PLN</p>
-                        </div>
-                     </div>
-                     {/* Simplified placeholder for brevity - assume previous logic exists */}
-                     <div className="bg-white rounded-xl p-4 border border-slate-200 text-center text-slate-400 text-sm">
-                        Pełna historia płatności dostępna (kod skrócony).
-                     </div>
-                  </div>
-               )}
-
+               {/* TAB: OFFERS */}
                {activeTab === 'offers' && !isInstaller && (
                  <div className="max-w-4xl space-y-6 animate-fade-in">
-                    {/* ... (Offers content) ... */}
                     <div className="flex justify-between items-center mb-4">
                        <h3 className="text-lg font-bold text-slate-800">Zapisane Oferty</h3>
                        <button className="text-sm text-blue-600 font-medium hover:underline flex items-center">
@@ -779,12 +743,254 @@ export const Customers: React.FC<CustomersProps> = ({
                     )}
                  </div>
                )}
-               
-               {/* Rest tabs omitted for XML brevity but exist in logic */}
-               {(activeTab === 'files' || activeTab === 'audit' || activeTab === 'notes') && (
-                   <div className="text-center text-slate-400 py-10 bg-slate-50 rounded-xl border border-slate-200">
-                       Zakładka dostępna (kod skrócony w widoku zmian).
-                   </div>
+
+               {/* TAB: FINANCES */}
+               {activeTab === 'finances' && selectedInstallation && !isInstaller && (
+                  <div className="space-y-8 animate-fade-in max-w-4xl">
+                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                           <p className="text-xs font-bold text-slate-400 uppercase mb-1">Całkowita wartość</p>
+                           <p className="text-2xl font-bold text-slate-800">{selectedInstallation.price.toLocaleString()} PLN</p>
+                        </div>
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                           <p className="text-xs font-bold text-slate-400 uppercase mb-1">Opłacono</p>
+                           <p className="text-2xl font-bold text-green-600">{selectedInstallation.paidAmount.toLocaleString()} PLN</p>
+                        </div>
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                           <p className="text-xs font-bold text-slate-400 uppercase mb-1">Pozostało</p>
+                           <p className="text-2xl font-bold text-red-600">{(selectedInstallation.price - selectedInstallation.paidAmount).toLocaleString()} PLN</p>
+                        </div>
+                     </div>
+
+                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                        <h3 className="font-bold text-slate-800 mb-4 flex items-center">
+                           <History className="w-5 h-5 mr-2 text-slate-500" /> Historia Wpłat
+                        </h3>
+                        {selectedInstallation.paymentHistory && selectedInstallation.paymentHistory.length > 0 ? (
+                           <div className="overflow-x-auto">
+                              <table className="w-full text-left">
+                                 <thead className="text-xs text-slate-500 uppercase bg-slate-50">
+                                    <tr>
+                                       <th className="p-3">Data</th>
+                                       <th className="p-3">Kwota</th>
+                                       <th className="p-3">Opis</th>
+                                       <th className="p-3">Dodał</th>
+                                       {canEditFinances && <th className="p-3 text-right">Akcje</th>}
+                                    </tr>
+                                 </thead>
+                                 <tbody className="divide-y divide-slate-100">
+                                    {selectedInstallation.paymentHistory.map(payment => (
+                                       <tr key={payment.id}>
+                                          <td className="p-3 text-sm font-medium">{payment.date}</td>
+                                          <td className="p-3 text-sm font-bold text-green-600">{payment.amount.toLocaleString()} PLN</td>
+                                          <td className="p-3 text-sm text-slate-500">{payment.comment || '-'}</td>
+                                          <td className="p-3 text-sm text-slate-500">{payment.recordedBy}</td>
+                                          {canEditFinances && (
+                                             <td className="p-3 text-right">
+                                                <button onClick={() => onRemovePayment(selectedInstallation.id, payment.id)} className="text-red-400 hover:text-red-600">
+                                                   <Trash2 className="w-4 h-4" />
+                                                </button>
+                                             </td>
+                                          )}
+                                       </tr>
+                                    ))}
+                                 </tbody>
+                              </table>
+                           </div>
+                        ) : (
+                           <div className="text-center py-6 text-slate-400 text-sm bg-slate-50 rounded-lg">Brak odnotowanych wpłat.</div>
+                        )}
+
+                        {canEditFinances && (
+                           <div className="mt-6 pt-6 border-t border-slate-100">
+                              <h4 className="font-bold text-sm text-slate-700 mb-3">Dodaj nową wpłatę</h4>
+                              <div className="flex flex-col md:flex-row gap-3 items-end">
+                                 <div className="w-full md:w-auto">
+                                    <label className="block text-xs font-bold text-slate-400 mb-1">Data</label>
+                                    <input type="date" value={newPaymentDate} onChange={(e) => setNewPaymentDate(e.target.value)} className="w-full p-2 border border-slate-300 rounded-lg text-sm" />
+                                 </div>
+                                 <div className="w-full md:w-auto">
+                                    <label className="block text-xs font-bold text-slate-400 mb-1">Kwota (PLN)</label>
+                                    <input type="number" value={newPaymentAmount} onChange={(e) => setNewPaymentAmount(Number(e.target.value))} className="w-full p-2 border border-slate-300 rounded-lg text-sm font-bold" />
+                                 </div>
+                                 <div className="flex-1 w-full">
+                                    <label className="block text-xs font-bold text-slate-400 mb-1">Komentarz</label>
+                                    <input type="text" value={newPaymentComment} onChange={(e) => setNewPaymentComment(e.target.value)} className="w-full p-2 border border-slate-300 rounded-lg text-sm" placeholder="np. Zaliczka" />
+                                 </div>
+                                 <button onClick={handlePaymentSubmit} disabled={newPaymentAmount <= 0} className="w-full md:w-auto bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 disabled:opacity-50">
+                                    <Plus className="w-4 h-4 inline mr-1" /> Dodaj
+                                 </button>
+                              </div>
+                           </div>
+                        )}
+                     </div>
+                  </div>
+               )}
+
+               {/* TAB: AUDIT */}
+               {activeTab === 'audit' && (
+                  <div className="space-y-6 animate-fade-in max-w-6xl">
+                     <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-bold text-lg text-slate-800">Zdjęcia z Audytu</h3>
+                        <div>
+                           <input 
+                              type="file" 
+                              accept="image/*" 
+                              className="hidden" 
+                              ref={auditInputRef}
+                              onChange={(e) => handleFileChange(e, 'audit')} 
+                           />
+                           <div className="flex space-x-2">
+                              <input 
+                                 type="text" 
+                                 placeholder="Opis zdjęcia..." 
+                                 value={photoDescription}
+                                 onChange={(e) => setPhotoDescription(e.target.value)}
+                                 className="border border-slate-300 rounded-lg px-3 py-2 text-sm w-48 md:w-64"
+                              />
+                              <button 
+                                 onClick={() => auditInputRef.current?.click()}
+                                 className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 flex items-center text-sm"
+                              >
+                                 <Upload className="w-4 h-4 mr-2" /> Dodaj Zdjęcie
+                              </button>
+                           </div>
+                        </div>
+                     </div>
+                     
+                     {editForm.auditPhotos && editForm.auditPhotos.length > 0 ? (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                           {editForm.auditPhotos.map(photo => (
+                              <div key={photo.id} className="group relative aspect-square bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-sm cursor-pointer" onClick={() => setSelectedImage(photo)}>
+                                 {photo.url ? (
+                                    <img src={photo.url} alt={photo.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                 ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-slate-400"><ImageIcon className="w-8 h-8"/></div>
+                                 )}
+                                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3">
+                                    <p className="text-white text-xs font-bold truncate">{photo.name}</p>
+                                    <p className="text-white/70 text-[10px]">{photo.dateUploaded}</p>
+                                 </div>
+                                 <button 
+                                    onClick={(e) => { e.stopPropagation(); handleDeleteFile(photo.id, 'audit'); }}
+                                    className="absolute top-2 right-2 bg-red-600 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                                 >
+                                    <Trash2 className="w-3 h-3" />
+                                 </button>
+                              </div>
+                           ))}
+                        </div>
+                     ) : (
+                        <div className="text-center py-12 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl">
+                           <Camera className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+                           <p className="text-slate-500 font-medium">Brak zdjęć z audytu.</p>
+                           <p className="text-xs text-slate-400 mt-1">Wgraj zdjęcia dachu, rozdzielni i terenu.</p>
+                        </div>
+                     )}
+
+                     {/* Image Preview Modal */}
+                     {selectedImage && (
+                        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4" onClick={() => setSelectedImage(null)}>
+                           <div className="relative max-w-5xl w-full max-h-[90vh]">
+                              <img src={selectedImage.url} alt={selectedImage.name} className="w-full h-full object-contain rounded-lg shadow-2xl" />
+                              <button className="absolute -top-12 right-0 text-white hover:text-slate-300" onClick={() => setSelectedImage(null)}>
+                                 <X className="w-8 h-8" />
+                              </button>
+                              <div className="absolute bottom-4 left-4 bg-black/50 px-4 py-2 rounded-lg backdrop-blur-sm text-white">
+                                 <p className="font-bold">{selectedImage.name}</p>
+                                 <p className="text-xs opacity-70">{selectedImage.dateUploaded}</p>
+                              </div>
+                           </div>
+                        </div>
+                     )}
+                  </div>
+               )}
+
+               {/* TAB: FILES */}
+               {activeTab === 'files' && (
+                  <div className="space-y-6 animate-fade-in max-w-4xl">
+                     <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-bold text-lg text-slate-800">Dokumenty</h3>
+                        <div>
+                           <input 
+                              type="file" 
+                              className="hidden" 
+                              ref={fileInputRef}
+                              onChange={(e) => handleFileChange(e, 'doc')} 
+                           />
+                           <button 
+                              onClick={() => fileInputRef.current?.click()}
+                              className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 flex items-center text-sm"
+                           >
+                              <Upload className="w-4 h-4 mr-2" /> Wgraj Plik
+                           </button>
+                        </div>
+                     </div>
+                     
+                     {editForm.files && editForm.files.length > 0 ? (
+                        <div className="space-y-3">
+                           {editForm.files.map(file => (
+                              <div key={file.id} className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl hover:shadow-sm transition-shadow">
+                                 <div className="flex items-center space-x-3">
+                                    <div className="bg-slate-100 p-2 rounded-lg text-slate-500">
+                                       <FileIcon className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                       <p className="font-bold text-slate-800 text-sm">{file.name}</p>
+                                       <p className="text-xs text-slate-500">{file.dateUploaded} • {file.type || 'Nieznany'}</p>
+                                    </div>
+                                 </div>
+                                 <div className="flex items-center space-x-2">
+                                    <button 
+                                       onClick={() => handleDownloadFile(file)}
+                                       className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                       title="Pobierz"
+                                    >
+                                       <Download className="w-4 h-4" />
+                                    </button>
+                                    <button 
+                                       onClick={() => handleDeleteFile(file.id, 'doc')}
+                                       className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                       title="Usuń"
+                                    >
+                                       <Trash2 className="w-4 h-4" />
+                                    </button>
+                                 </div>
+                              </div>
+                           ))}
+                        </div>
+                     ) : (
+                        <div className="text-center py-12 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl">
+                           <FileIcon className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+                           <p className="text-slate-500 font-medium">Brak dokumentów.</p>
+                           <p className="text-xs text-slate-400 mt-1">Tutaj pojawią się umowy, projekty i faktury.</p>
+                        </div>
+                     )}
+                  </div>
+               )}
+
+               {/* TAB: NOTES */}
+               {activeTab === 'notes' && (
+                  <div className="h-full flex flex-col animate-fade-in max-w-4xl">
+                     <h3 className="font-bold text-lg text-slate-800 mb-4">Notatki</h3>
+                     <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-col">
+                        <textarea 
+                           value={editForm.notes} 
+                           onChange={(e) => handleInputChange('notes', e.target.value)}
+                           className="flex-1 w-full p-4 border-0 focus:ring-0 outline-none resize-none text-slate-700 bg-transparent placeholder:text-slate-300"
+                           placeholder="Wpisz notatki dotyczące klienta..." 
+                        />
+                        <div className="flex justify-between items-center pt-4 border-t border-slate-100 mt-4">
+                           <span className="text-xs text-slate-400">Notatki są widoczne tylko dla pracowników.</span>
+                           <button 
+                              onClick={handleSaveCustomer}
+                              className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700 transition-colors shadow-sm"
+                           >
+                              Zapisz
+                           </button>
+                        </div>
+                     </div>
+                  </div>
                )}
 
             </div>

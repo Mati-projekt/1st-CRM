@@ -1,6 +1,7 @@
+
 import React from 'react';
 import { Installation, InstallationStatus, Customer, UserRole, User } from '../types';
-import { Calendar, MapPin, User as UserIcon, ChevronRight, Settings, Banknote, Briefcase } from 'lucide-react';
+import { Calendar, MapPin, ChevronRight, Banknote, Briefcase } from 'lucide-react';
 
 interface InstallationsProps {
   installations: Installation[];
@@ -19,13 +20,18 @@ export const Installations: React.FC<InstallationsProps> = ({
   onUpdateInstallation,
   currentUserRole
 }) => {
-  const getCustomerName = (id: string) => customers.find(c => c.id === id)?.name || 'Nieznany';
+  // Enhanced lookup with fallback debugging
+  const getCustomerName = (id: string) => {
+     const c = customers.find(c => c.id === id);
+     return c ? c.name : `Błąd danych (ID: ${id?.slice(0,4)}...)`;
+  };
   
   const getOwnerName = (customerId: string) => {
      const customer = customers.find(c => c.id === customerId);
-     if (!customer?.repId) return 'Nieprzypisany';
+     if (!customer) return '-';
+     if (!customer.repId) return 'Nieprzypisany';
      const owner = users.find(u => u.id === customer.repId);
-     return owner ? owner.name : 'Nieznany';
+     return owner ? owner.name : 'Nieznany ID';
   };
 
   const isInstaller = currentUserRole === UserRole.INSTALLER;

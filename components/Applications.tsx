@@ -1,5 +1,3 @@
-
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { ArrowLeft, Presentation, Battery, Wind, Flame, Zap, Sun, User, CheckCircle, ChevronRight, BarChart3, Upload, Plus, Home, Hammer, Shovel, ShieldCheck, Banknote, Save, AlertTriangle, ArrowUpRight, CheckSquare, Coins, Calculator, Percent, ChevronDown, ChevronUp, CalendarClock } from 'lucide-react';
 import { Customer, InventoryItem, ProductCategory, CalculatorState, Offer, TariffType, User as AppUser, SystemSettings } from '../types';
@@ -181,8 +179,6 @@ export const Applications: React.FC<ApplicationsProps> = ({
        if (calc.storageId) {
          personalMarkup += (currentUser.salesSettings.marginStorage || 0);
        }
-       // Add Heat margin if applicable (current calc is PV focused, but prepared)
-       // if (isHeatCalc) personalMarkup += currentUser.salesSettings.marginHeat;
     }
     
     totalSystemPrice += personalMarkup;
@@ -241,6 +237,9 @@ export const Applications: React.FC<ApplicationsProps> = ({
     if (calc.storageId) efficiencyRatio += 0.2; 
     if (calc.hasEMS) efficiencyRatio += 0.05; 
     
+    // Determine max value for chart scaling
+    let maxChartValue = 0;
+
     for (let i = 1; i <= 20; i++) {
        const yearlyBillWithoutPV = currentBill;
        const productionValue = estimatedProductionKwh * effectivePricePerKwh;
@@ -252,6 +251,9 @@ export const Applications: React.FC<ApplicationsProps> = ({
          foundPayback = true;
        }
        chartData.push({ year: i, balance: accumulatedBalance, savings: yearlySavings });
+       
+       if (Math.abs(accumulatedBalance) > maxChartValue) maxChartValue = Math.abs(accumulatedBalance);
+       
        currentBill = currentBill * (1 + inflation);
     }
 
@@ -265,7 +267,7 @@ export const Applications: React.FC<ApplicationsProps> = ({
 
     return { 
         totalSystemPrice, netInvestment, subsidyPV, subsidyStorage, totalSubsidies, taxReturn, chartData, paybackYear, effectivePricePerKwh, systemPowerKw, inverterPower, appliedMarkup, personalMarkup,
-        exceedsConnectionPower, powerToCheck, limitedByCapPV, limitedByCapStorage,
+        exceedsConnectionPower, powerToCheck, limitedByCapPV, limitedByCapStorage, maxChartValue,
         breakdown: { costPanels, costInverter, costStorage, costMounting, costTrench, costLabor, costEMS, costUPS },
         components: { panel: selectedPanel, inverter: selectedInverter, storage: selectedStorage, mounting: selectedMounting }
     };
@@ -291,7 +293,7 @@ export const Applications: React.FC<ApplicationsProps> = ({
       const systemPower = ((financials.components.panel?.power || 0) * calc.panelCount) / 1000;
       const offer: Offer = {
         id: offerId,
-        name: `Instalacja PV ${systemPower.toFixed(2)} kWp (${calc.installationType})`,
+        name: `Instalacja PV ${systemPower.toFixed(2)} kWp (${calc.installationType === 'ROOF' ? 'Dach' : 'Grunt'})`,
         dateCreated: new Date().toISOString(),
         finalPrice: financials.totalSystemPrice,
         calculatorState: { ...calc },
@@ -303,10 +305,6 @@ export const Applications: React.FC<ApplicationsProps> = ({
   };
 
   const renderPvCalculator = () => {
-    // ... (Existing Render Logic - Kept essentially same but using updated financials) ...
-    // Note: I will include the core structure to ensure file validity, but assume the inner rendering parts 
-    // for Steps 1-4 are unchanged unless margin affects display (it shouldn't, margin is silent).
-    
     const isDualTariff = ['G12', 'G12w', 'C12a', 'C12b'].includes(calc.tariff);
     const ConnectionPowerWarning = () => (
        <div className="bg-red-50 border border-red-200 rounded-xl p-5 mb-6 animate-shake">
@@ -362,9 +360,8 @@ export const Applications: React.FC<ApplicationsProps> = ({
 
         {/* Wizard Content */}
         <div className="p-4 md:p-8 flex-1 overflow-y-auto bg-slate-50/50">
-            {/* Steps 1-4 reused from previous version, kept concise here for update efficiency as they logic didn't change, only financials in Step 6 */}
+            {/* Step 1: Client */}
             {calc.step === 1 && (
-               /* Step 1: Client */
                <div className="max-w-xl mx-auto space-y-6 animate-fade-in">
                   <div className="grid gap-4">
                      <div onClick={() => setCalc({...calc, isNewClient: false})} className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-center ${!calc.isNewClient ? 'border-amber-500 bg-amber-50' : 'bg-white'}`}>
@@ -384,7 +381,7 @@ export const Applications: React.FC<ApplicationsProps> = ({
                      {calc.isNewClient && (
                          <div className="space-y-3">
                              <input type="text" placeholder="Nazwa" className="w-full p-3 border rounded-lg" value={calc.newClientData.name} onChange={(e) => setCalc({...calc, newClientData: {...calc.newClientData, name: e.target.value}})} />
-                             <input type="text" placeholder="Email" className="w-full p-3 border rounded-lg" value={calc.newClientData.email} onChange={(e) => setCalc({...calc, newClientData: {...calc.newClientData, email: e.target.value}})} />
+                             <input type="email" placeholder="Email (wymagany)" className="w-full p-3 border rounded-lg" value={calc.newClientData.email} onChange={(e) => setCalc({...calc, newClientData: {...calc.newClientData, email: e.target.value}})} />
                              <input type="text" placeholder="Telefon" className="w-full p-3 border rounded-lg" value={calc.newClientData.phone} onChange={(e) => setCalc({...calc, newClientData: {...calc.newClientData, phone: e.target.value}})} />
                              <input type="text" placeholder="Adres" className="w-full p-3 border rounded-lg" value={calc.newClientData.address} onChange={(e) => setCalc({...calc, newClientData: {...calc.newClientData, address: e.target.value}})} />
                          </div>
@@ -392,8 +389,9 @@ export const Applications: React.FC<ApplicationsProps> = ({
                   </div>
                </div>
             )}
+            
+            {/* Step 2: Energy */}
             {calc.step === 2 && (
-               /* Step 2: Energy */
                <div className="max-w-xl mx-auto space-y-6 animate-fade-in">
                   <div className="space-y-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                      <div className="grid grid-cols-2 gap-4">
@@ -415,8 +413,9 @@ export const Applications: React.FC<ApplicationsProps> = ({
                   </div>
                </div>
             )}
+
+            {/* Step 3: Components */}
             {calc.step === 3 && (
-               /* Step 3: Components */
                <div className="space-y-6 animate-fade-in">
                   <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                      <h3 className="text-xl font-bold text-slate-800">Komponenty ({calc.phases}-Faza)</h3>
@@ -441,19 +440,116 @@ export const Applications: React.FC<ApplicationsProps> = ({
                   </div>
                </div>
             )}
+
+            {/* Step 4: Mounting (RESTORED) */}
             {calc.step === 4 && (
-               /* Step 4: Mounting */
                <div className="space-y-6 animate-fade-in max-w-4xl mx-auto">
-                   <div className="grid grid-cols-2 gap-4">
-                      <div onClick={() => setCalc({...calc, installationType: 'ROOF'})} className={`p-6 border-2 rounded-2xl cursor-pointer text-center ${calc.installationType === 'ROOF' ? 'border-blue-600 bg-blue-50' : 'bg-white'}`}><Home className="mx-auto mb-2"/>Dach</div>
-                      <div onClick={() => setCalc({...calc, installationType: 'GROUND'})} className={`p-6 border-2 rounded-2xl cursor-pointer text-center ${calc.installationType === 'GROUND' ? 'border-green-600 bg-green-50' : 'bg-white'}`}><Shovel className="mx-auto mb-2"/>Grunt</div>
+                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                      <h3 className="font-bold text-slate-800 mb-6">Konfiguracja Montażu</h3>
+                      
+                      <div className="grid grid-cols-2 gap-4 mb-6">
+                         <div 
+                           onClick={() => setCalc({...calc, installationType: 'ROOF'})} 
+                           className={`p-6 border-2 rounded-2xl cursor-pointer text-center transition-all ${calc.installationType === 'ROOF' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}
+                         >
+                            <Home className="mx-auto mb-2 w-8 h-8"/>
+                            <span className="font-bold">Dach</span>
+                         </div>
+                         <div 
+                           onClick={() => setCalc({...calc, installationType: 'GROUND'})} 
+                           className={`p-6 border-2 rounded-2xl cursor-pointer text-center transition-all ${calc.installationType === 'GROUND' ? 'border-green-600 bg-green-50 text-green-700' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}
+                         >
+                            <Shovel className="mx-auto mb-2 w-8 h-8"/>
+                            <span className="font-bold">Grunt</span>
+                         </div>
+                      </div>
+
+                      {calc.installationType === 'ROOF' ? (
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                               <label className="block text-sm font-bold text-slate-600 mb-2">Rodzaj Dachu</label>
+                               <select 
+                                 value={calc.roofSlope} 
+                                 onChange={(e) => setCalc({...calc, roofSlope: e.target.value as any})}
+                                 className="w-full p-3 border border-slate-300 rounded-xl bg-white text-slate-800"
+                               >
+                                  <option value="PITCHED">Skośny</option>
+                                  <option value="FLAT">Płaski</option>
+                               </select>
+                            </div>
+                            <div>
+                               <label className="block text-sm font-bold text-slate-600 mb-2">Pokrycie Dachowe</label>
+                               <select 
+                                 value={calc.roofMaterial} 
+                                 onChange={(e) => setCalc({...calc, roofMaterial: e.target.value as any})}
+                                 className="w-full p-3 border border-slate-300 rounded-xl bg-white text-slate-800"
+                               >
+                                  <option value="DACHOWKA">Dachówka</option>
+                                  <option value="BLACHA">Blacha</option>
+                                  <option value="BLACHODACHOWKA">Blachodachówka</option>
+                                  <option value="TRAPEZ">Blacha Trapezowa</option>
+                                  <option value="PAPA">Papa</option>
+                                  <option value="GONTY">Gonty</option>
+                               </select>
+                            </div>
+                            <div>
+                               <label className="block text-sm font-bold text-slate-600 mb-2">Orientacja Paneli</label>
+                               <select 
+                                 value={calc.orientation} 
+                                 onChange={(e) => setCalc({...calc, orientation: e.target.value as any})}
+                                 className="w-full p-3 border border-slate-300 rounded-xl bg-white text-slate-800"
+                               >
+                                  <option value="SOUTH">Południe (S)</option>
+                                  <option value="EAST_WEST">Wschód - Zachód (E-W)</option>
+                               </select>
+                            </div>
+                         </div>
+                      ) : (
+                         <div className="space-y-4">
+                            <div>
+                               <label className="block text-sm font-bold text-slate-600 mb-2">Długość Przekopu (mb)</label>
+                               <input 
+                                 type="number" 
+                                 value={calc.trenchLength}
+                                 onChange={(e) => setCalc({...calc, trenchLength: Number(e.target.value)})}
+                                 className="w-full p-3 border border-slate-300 rounded-xl"
+                                 placeholder="np. 30"
+                               />
+                               <p className="text-xs text-slate-400 mt-1">Koszt przekopu zostanie doliczony do wyceny.</p>
+                            </div>
+                            <div>
+                               <label className="block text-sm font-bold text-slate-600 mb-2">Orientacja Paneli</label>
+                               <select 
+                                 value={calc.orientation} 
+                                 onChange={(e) => setCalc({...calc, orientation: e.target.value as any})}
+                                 className="w-full p-3 border border-slate-300 rounded-xl bg-white text-slate-800"
+                               >
+                                  <option value="SOUTH">Południe (S)</option>
+                                  <option value="EAST_WEST">Wschód - Zachód (E-W)</option>
+                               </select>
+                            </div>
+                         </div>
+                      )}
+
+                      <div className="mt-6 pt-6 border-t border-slate-100">
+                         <label className="block text-sm font-bold text-slate-600 mb-2">Wybierz System Montażowy (Z Magazynu)</label>
+                         <select 
+                           className="w-full p-3 border border-slate-300 rounded-xl bg-white font-bold" 
+                           value={calc.mountingSystemId} 
+                           onChange={(e) => setCalc({...calc, mountingSystemId: e.target.value})}
+                         >
+                            <option value="">-- Wybierz System --</option>
+                            {accessories.map(a => (
+                               <option key={a.id} value={a.id}>{a.name} - {a.price} zł</option>
+                            ))}
+                         </select>
+                      </div>
                    </div>
-                   {/* ... Simplified mounting options ... */}
-                   <select className="w-full p-3 border rounded-xl bg-white" value={calc.mountingSystemId} onChange={(e) => setCalc({...calc, mountingSystemId: e.target.value})}><option value="">Wybierz system...</option>{accessories.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
                </div>
             )}
+
+            {/* Step 5: Financials */}
             {calc.step === 5 && (
-               /* Step 5: Financials */
                <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
                    <div className="bg-white p-5 rounded-xl border border-slate-200">
                        <h4 className="font-bold text-slate-800 mb-4 flex items-center"><Coins className="w-5 h-5 mr-2 text-amber-500" /> Dotacje</h4>
@@ -466,10 +562,29 @@ export const Applications: React.FC<ApplicationsProps> = ({
                            <span className="font-bold text-green-600">+16 000 zł</span>
                        </label>
                    </div>
+                   
+                   <div className="bg-white p-5 rounded-xl border border-slate-200">
+                       <h4 className="font-bold text-slate-800 mb-4 flex items-center"><Percent className="w-5 h-5 mr-2 text-blue-500" /> Ulga Termomodernizacyjna</h4>
+                       <div className="flex space-x-4">
+                           <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${calc.taxRelief === 'NONE' ? 'bg-slate-800 text-white border-slate-800' : 'hover:bg-slate-50'}`}>
+                               <input type="radio" name="tax" className="hidden" checked={calc.taxRelief === 'NONE'} onChange={() => setCalc({...calc, taxRelief: 'NONE'})}/>
+                               <span className="font-bold">Brak</span>
+                           </label>
+                           <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${calc.taxRelief === '12' ? 'bg-blue-600 text-white border-blue-600' : 'hover:bg-slate-50'}`}>
+                               <input type="radio" name="tax" className="hidden" checked={calc.taxRelief === '12'} onChange={() => setCalc({...calc, taxRelief: '12'})}/>
+                               <span className="font-bold">12%</span>
+                           </label>
+                           <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${calc.taxRelief === '32' ? 'bg-blue-800 text-white border-blue-800' : 'hover:bg-slate-50'}`}>
+                               <input type="radio" name="tax" className="hidden" checked={calc.taxRelief === '32'} onChange={() => setCalc({...calc, taxRelief: '32'})}/>
+                               <span className="font-bold">32%</span>
+                           </label>
+                       </div>
+                   </div>
                </div>
             )}
+
+            {/* Step 6: Summary */}
             {calc.step === 6 && (
-               /* Step 6: Summary */
                <div className="space-y-8 animate-fade-in max-w-4xl mx-auto">
                    <div className="bg-white p-6 md:p-8 rounded-2xl shadow-lg border border-slate-200">
                        <h3 className="text-xl md:text-2xl font-bold text-slate-800 mb-6 border-b pb-4">Podsumowanie Kosztów</h3>
@@ -480,6 +595,54 @@ export const Applications: React.FC<ApplicationsProps> = ({
                            <div className="border-t border-slate-300 my-4 pt-4 flex justify-between items-center"><span className="text-lg md:text-xl font-extrabold text-slate-800 uppercase">Koszt Finalny</span><span className="text-3xl md:text-4xl font-extrabold text-blue-700">{financials.netInvestment.toLocaleString('pl-PL', {maximumFractionDigits: 0})} PLN</span></div>
                        </div>
                        
+                       {/* ROI Chart */}
+                       <div className="mt-8">
+                          <h4 className="font-bold text-slate-800 mb-4 flex items-center"><BarChart3 className="w-5 h-5 mr-2" /> Zwrot z inwestycji (20 lat)</h4>
+                          <div className="h-64 flex items-end space-x-1 relative border-b border-slate-300 pb-2">
+                             {/* Zero Line */}
+                             <div className="absolute w-full border-t border-slate-400 border-dashed" style={{ bottom: `${(Math.abs(-financials.netInvestment) / (financials.maxChartValue + financials.netInvestment)) * 100}%` }}></div>
+                             
+                             {financials.chartData.map((d) => {
+                                const isPositive = d.balance >= 0;
+                                // Calculate height percentage relative to max value
+                                // Offset base by negative investment amount to fit in graph
+                                const totalRange = financials.maxChartValue + Math.abs(-financials.netInvestment); 
+                                const zeroOffset = Math.abs(-financials.netInvestment);
+                                const barHeight = Math.abs(d.balance) / totalRange * 100;
+                                const bottomPos = isPositive 
+                                   ? (zeroOffset / totalRange * 100) 
+                                   : ((zeroOffset - Math.abs(d.balance)) / totalRange * 100);
+
+                                return (
+                                   <div key={d.year} className="flex-1 flex flex-col items-center group relative">
+                                      <div 
+                                         className={`w-full rounded-t-sm transition-all ${isPositive ? 'bg-green-500' : 'bg-red-400'}`} 
+                                         style={{ 
+                                            height: `${Math.max(1, barHeight)}%`, 
+                                            marginBottom: `${bottomPos}%`
+                                         }}
+                                      ></div>
+                                      {/* Tooltip */}
+                                      <div className="absolute bottom-full mb-2 opacity-0 group-hover:opacity-100 bg-slate-800 text-white text-[10px] p-2 rounded pointer-events-none z-10 w-24 text-center">
+                                         Rok {d.year}<br/>
+                                         {Math.round(d.balance).toLocaleString()} PLN
+                                      </div>
+                                   </div>
+                                );
+                             })}
+                          </div>
+                          <div className="flex justify-between mt-2 text-xs text-slate-500 font-bold">
+                             <span>Rok 1</span>
+                             <span>Rok 10</span>
+                             <span>Rok 20</span>
+                          </div>
+                          {financials.paybackYear > 0 && (
+                             <p className="text-center mt-4 font-bold text-green-600 bg-green-50 p-2 rounded-lg border border-green-100">
+                                Szacowany zwrot inwestycji: <span className="text-lg">{financials.paybackYear} lat</span>
+                             </p>
+                          )}
+                       </div>
+
                        {/* Subscription Sim (Loan) */}
                        <div className="mt-6 border border-blue-100 bg-blue-50/50 rounded-xl overflow-hidden">
                            <button onClick={() => setShowLoanCalc(!showLoanCalc)} className="w-full flex justify-between items-center p-4 text-blue-700 font-bold text-sm hover:bg-blue-100/50">

@@ -200,6 +200,8 @@ export interface Installation {
   price: number;
   paidAmount: number;
   paymentHistory?: PaymentEntry[];
+  
+  commissionValue?: number; // New field to track solidified commission
 }
 
 export type ViewState = 'DASHBOARD' | 'CUSTOMERS' | 'INSTALLATIONS' | 'INVENTORY' | 'APPLICATIONS' | 'EMPLOYEES';

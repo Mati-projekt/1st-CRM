@@ -1,4 +1,5 @@
 
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { Installation, InstallationStatus, InventoryItem, Customer, ViewState, User, UserRole, Task, Message, SalesSettings } from '../types';
 import { TrendingUp, AlertTriangle, CheckCircle, Zap, Users, Wallet, ArrowRight, Sun, Calendar, Plus, X, CloudRain, CloudSun, MapPin, Loader2, Battery, Flame, Mail, Settings, BarChart3, CalendarDays, ChevronLeft, ChevronRight, MessageSquare, Send, Save, RefreshCw } from 'lucide-react';
@@ -69,7 +70,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     loading: true
   });
 
-  // Fetch Weather
+  // Fetch Weather - NOW WITH SAFE ERROR HANDLING
   useEffect(() => {
     const fetchWeather = async (query: string) => {
       try {
@@ -84,8 +85,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
           loading: false
         });
       } catch (error) {
-        console.error("Failed to fetch weather:", error);
-        setWeatherData(prev => ({ ...prev, loading: false, conditionText: 'Brak danych', location: 'Niedostępna' }));
+        console.warn("Weather fetch failed (likely blocked by sandbox). Using fallback.", error);
+        // Fallback or just 'Brak danych' without crashing
+        setWeatherData(prev => ({ 
+           ...prev, 
+           loading: false, 
+           conditionText: 'Niedostępna', 
+           location: 'Brak danych' 
+        }));
       }
     };
 
@@ -110,7 +117,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
     if (isSalesRole) {
        // Filter by rep logic
        const myCustIds = customers.filter(c => c.repId === currentUser.id).map(c => c.id);
-       relevantInstalls = installations.filter(i => myCustIds.includes(i.customerId));
+       // Manager sees team logic handles in App.tsx passing, but double check filtering here if needed
+       // Assuming 'installations' prop is already filtered by App.tsx logic for permissions
+       // But strictly for "My Performance" stats, usually sales reps only care about their own deals
+       if (currentUser.role === UserRole.SALES) {
+          relevantInstalls = installations.filter(i => myCustIds.includes(i.customerId));
+       }
     }
 
     const now = new Date();
@@ -121,28 +133,67 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     const filteredInstalls = relevantInstalls.filter(i => {
        // Use dateScheduled or created date (mocking created date with scheduled for demo)
+       // Fallback to checking id as timestamp if dateScheduled missing
        const dateStr = i.dateScheduled || '2023-01-01';
        return new Date(dateStr) >= startDate;
     });
 
-    // Counts
-    let pvCount = 0;
-    let storageCount = 0;
-    let heatCount = 0;
+    // Counts (Total Pipeline vs Completed/Settled)
+    let pvCountTotal = 0;
+    let pvCountSettled = 0;
+
+    let storageCountTotal = 0;
+    let storageCountSettled = 0;
+
+    let heatCountTotal = 0;
+    let heatCountSettled = 0;
+
+    let earnedMargin = 0;
+    let pendingMargin = 0;
     
     filteredInstalls.forEach(i => {
-       if (i.systemSizeKw > 0) pvCount++;
-       if (i.storageSizeKw && i.storageSizeKw > 0) storageCount++;
-       // Mock logic for heat as we don't have explicit field yet
-       if (i.notes?.toLowerCase().includes('pompa') || i.notes?.toLowerCase().includes('heat')) heatCount++;
-    });
+       const isCompleted = i.status === InstallationStatus.COMPLETED;
+       
+       // Detect types
+       const hasPV = i.systemSizeKw > 0;
+       const hasStorage = i.storageSizeKw && i.storageSizeKw > 0;
+       const hasHeat = i.notes?.toLowerCase().includes('pompa') || i.notes?.toLowerCase().includes('heat');
 
-    // Margin Calculation (Based on fixed personal margin settings)
-    // In a real app, this would sum `offer.personalMarkup` from saved offers.
-    // Here we approximate based on current settings for demo purposes.
-    const earnedMargin = (pvCount * userSettings.marginPV) + 
-                         (storageCount * userSettings.marginStorage) + 
-                         (heatCount * userSettings.marginHeat);
+       // PV Stats
+       if (hasPV) {
+          pvCountTotal++;
+          if (isCompleted) pvCountSettled++;
+       }
+
+       // Storage Stats
+       if (hasStorage) {
+          storageCountTotal++;
+          if (isCompleted) storageCountSettled++;
+       }
+
+       // Heat Stats
+       if (hasHeat) {
+          heatCountTotal++;
+          if (isCompleted) heatCountSettled++;
+       }
+
+       // Margin Calculation
+       // UPDATED LOGIC: Prefer saved commission value, fallback to current settings
+       let dealMargin = 0;
+       if (i.commissionValue !== undefined) {
+           dealMargin = i.commissionValue;
+       } else {
+           if (hasPV) dealMargin += userSettings.marginPV;
+           if (hasStorage) dealMargin += userSettings.marginStorage;
+           if (hasHeat) dealMargin += userSettings.marginHeat;
+       }
+
+       if (isCompleted) {
+          earnedMargin += dealMargin;
+       } else {
+          pendingMargin += dealMargin;
+       }
+    });
 
     const totalKW = installations.reduce((acc, curr) => acc + curr.systemSizeKw, 0);
     const pending = installations.filter(i => i.status !== InstallationStatus.COMPLETED && i.status !== InstallationStatus.NEW).length;
@@ -152,7 +203,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
       return acc;
     }, {} as Record<string, number>);
 
-    return { totalKW, pending, lowStock, statusCounts, pvCount, storageCount, heatCount, earnedMargin };
+    return { 
+       totalKW, pending, lowStock, statusCounts, 
+       pvCountTotal, pvCountSettled,
+       storageCountTotal, storageCountSettled,
+       heatCountTotal, heatCountSettled,
+       earnedMargin, pendingMargin
+    };
   }, [installations, inventory, customers, currentUser, statsPeriod, userSettings]);
 
   const getStatusColor = (status: InstallationStatus) => {
@@ -327,17 +384,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
                {/* Sales Stats Grid */}
                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {/* PV STATS */}
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between">
                      <div className="flex justify-between items-start mb-4">
                         <div className="p-3 bg-amber-50 text-amber-600 rounded-xl"><Sun className="w-6 h-6"/></div>
                         <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded">PV + ME</span>
                      </div>
                      <div>
-                        <p className="text-sm text-slate-500 font-medium">Sprzedane Instalacje</p>
-                        <p className="text-3xl font-bold text-slate-800 mt-1">{stats.pvCount}</p>
+                        <p className="text-sm text-slate-500 font-medium">Sprzedane (Zakończone)</p>
+                        <div className="flex items-baseline space-x-2 mt-1">
+                           <p className="text-3xl font-bold text-slate-800">{stats.pvCountSettled}</p>
+                           <p className="text-sm font-medium text-slate-400">/ {stats.pvCountTotal} w toku</p>
+                        </div>
                      </div>
                   </div>
 
+                  {/* STORAGE STATS */}
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between">
                      <div className="flex justify-between items-start mb-4">
                         <div className="p-3 bg-green-50 text-green-600 rounded-xl"><Battery className="w-6 h-6"/></div>
@@ -345,10 +407,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                      </div>
                      <div>
                         <p className="text-sm text-slate-500 font-medium">Sprzedane Magazyny</p>
-                        <p className="text-3xl font-bold text-slate-800 mt-1">{stats.storageCount}</p>
+                         <div className="flex items-baseline space-x-2 mt-1">
+                           <p className="text-3xl font-bold text-slate-800">{stats.storageCountSettled}</p>
+                           <p className="text-sm font-medium text-slate-400">/ {stats.storageCountTotal} w toku</p>
+                        </div>
                      </div>
                   </div>
 
+                  {/* HEAT STATS */}
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between">
                      <div className="flex justify-between items-start mb-4">
                         <div className="p-3 bg-red-50 text-red-600 rounded-xl"><Flame className="w-6 h-6"/></div>
@@ -356,18 +422,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
                      </div>
                      <div>
                         <p className="text-sm text-slate-500 font-medium">Systemy Grzewcze</p>
-                        <p className="text-3xl font-bold text-slate-800 mt-1">{stats.heatCount}</p>
+                         <div className="flex items-baseline space-x-2 mt-1">
+                           <p className="text-3xl font-bold text-slate-800">{stats.heatCountSettled}</p>
+                           <p className="text-sm font-medium text-slate-400">/ {stats.heatCountTotal} w toku</p>
+                        </div>
                      </div>
                   </div>
 
+                  {/* COMMISSION STATS (EARNED ONLY ON COMPLETED) */}
                   <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-6 rounded-2xl shadow-lg text-white flex flex-col justify-between relative overflow-hidden">
                      <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
                      <div className="flex justify-between items-start mb-4 relative z-10">
                         <div className="p-3 bg-white/20 rounded-xl"><Wallet className="w-6 h-6"/></div>
                      </div>
                      <div className="relative z-10">
-                        <p className="text-sm text-blue-100 font-medium">Twoja Prowizja</p>
+                        <p className="text-sm text-blue-100 font-medium">Zrealizowana Prowizja</p>
                         <p className="text-3xl font-bold mt-1">{stats.earnedMargin.toLocaleString()} PLN</p>
+                        <p className="text-[10px] text-blue-200 mt-1 flex items-center">
+                           <span className="opacity-70">Prognozowana: {stats.pendingMargin.toLocaleString()} PLN</span>
+                        </p>
                      </div>
                   </div>
                </div>

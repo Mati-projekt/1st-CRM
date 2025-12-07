@@ -1,5 +1,4 @@
 
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
@@ -12,7 +11,7 @@ import { Login } from './components/Login';
 import { Notification, NotificationType } from './components/Notification';
 import { Customer, Installation, InventoryItem, ViewState, Offer, CalculatorState, InstallationStatus, UserRole, PaymentEntry, Task, Message, SalesSettings, ProductCategory, User, SystemSettings } from './types';
 import { supabase } from './services/supabaseClient';
-import { Menu, RefreshCw } from 'lucide-react';
+import { Menu } from 'lucide-react';
 import { MOCK_INVENTORY } from './constants';
 
 // Safe ID generator fallback
@@ -60,21 +59,118 @@ const App: React.FC = () => {
     setNotification({ message, type });
   };
 
+  // --- MAPPERS (CRITICAL FOR DB SYNC - HYBRID APPROACH) ---
+  
+  const mapCustomerFromDB = (c: any): Customer => ({
+    id: c.id,
+    name: c.name,
+    email: c.email || '',
+    phone: c.phone || '',
+    address: c.address || '',
+    notes: c.notes || '',
+    // Try snake_case first (standard), then camelCase (legacy/auto-generated)
+    repId: c.rep_id || c.repId || '', 
+    files: c.files || [], 
+    auditPhotos: c.audit_photos || c.auditPhotos || [],
+    offers: c.offers || []
+  });
+
+  const mapCustomerToDB = (c: Partial<Customer>): any => {
+    const db: any = {};
+    if (c.id) db.id = c.id;
+    if (c.name) db.name = c.name;
+    if (c.email) db.email = c.email;
+    if (c.phone) db.phone = c.phone;
+    if (c.address) db.address = c.address;
+    if (c.notes) db.notes = c.notes;
+    if (c.repId) db.rep_id = c.repId;
+    if (c.offers) db.offers = c.offers;
+    return db;
+  };
+
+  const mapInstallationFromDB = (i: any): Installation => ({
+    id: i.id,
+    customerId: i.customer_id || i.customerId || '', // Hybrid check
+    address: i.address || '',
+    systemSizeKw: i.system_size_kw || i.systemSizeKw || 0, // Hybrid check
+    status: i.status as InstallationStatus,
+    dateScheduled: i.date_scheduled || i.dateScheduled,
+    assignedTeam: i.assigned_team || i.assignedTeam,
+    notes: i.notes,
+    panelModel: i.panel_model || i.panelModel,
+    inverterModel: i.inverter_model || i.inverterModel,
+    storageModel: i.storage_model || i.storageModel,
+    storageSizeKw: i.storage_size_kw || i.storageSizeKw,
+    mountingSystem: i.mounting_system || i.mountingSystem,
+    trenchLength: i.trench_length || i.trenchLength,
+    price: i.price || 0,
+    paidAmount: i.paid_amount || i.paidAmount || 0,
+    paymentHistory: i.payment_history || i.paymentHistory || [],
+    commissionValue: i.commission_value || i.commissionValue || 0
+  });
+
+  const mapInstallationToDB = (i: Partial<Installation>): any => {
+    const db: any = {};
+    if (i.id) db.id = i.id;
+    if (i.customerId) { db.customer_id = i.customerId; db.customerId = i.customerId; } // Send both for robust compat if schema varies
+    if (i.address) db.address = i.address;
+    if (i.systemSizeKw !== undefined) { db.system_size_kw = i.systemSizeKw; db.systemSizeKw = i.systemSizeKw; }
+    if (i.status) db.status = i.status;
+    if (i.dateScheduled !== undefined) db.date_scheduled = i.dateScheduled;
+    if (i.assignedTeam !== undefined) db.assigned_team = i.assignedTeam;
+    if (i.notes !== undefined) db.notes = i.notes;
+    if (i.panelModel !== undefined) db.panel_model = i.panelModel;
+    if (i.inverterModel !== undefined) db.inverter_model = i.inverterModel;
+    if (i.storageModel !== undefined) db.storage_model = i.storageModel;
+    if (i.storageSizeKw !== undefined) db.storage_size_kw = i.storageSizeKw;
+    if (i.mountingSystem !== undefined) db.mounting_system = i.mountingSystem;
+    if (i.trenchLength !== undefined) db.trench_length = i.trenchLength;
+    if (i.price !== undefined) db.price = i.price;
+    if (i.paidAmount !== undefined) db.paid_amount = i.paidAmount;
+    if (i.paymentHistory !== undefined) db.payment_history = i.paymentHistory;
+    if (i.commissionValue !== undefined) db.commission_value = i.commissionValue;
+    return db;
+  };
+
   // --- INITIAL DATA FETCH ---
   const fetchData = async () => {
     if (!currentUser) return;
     try {
-      // Fetch Inventory
+      // Fetch Inventory with mapping
       const { data: invData } = await supabase.from('inventory').select('*');
-      if (invData) setInventory(invData as InventoryItem[]);
+      if (invData) {
+        const mappedInventory: InventoryItem[] = invData.map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          category: item.category as ProductCategory,
+          quantity: item.quantity,
+          minQuantity: item.min_quantity || item.minQuantity,
+          price: item.price,
+          unit: item.unit,
+          warranty: item.warranty,
+          power: item.power,
+          capacity: item.capacity,
+          phases: item.phases,
+          url: item.url,
+          dateAdded: item.date_added || item.dateAdded
+        }));
+        setInventory(mappedInventory);
+      }
 
-      // Fetch Customers
-      const { data: custData } = await supabase.from('customers').select('*');
-      if (custData) setCustomers(custData as Customer[]);
+      // Fetch Customers with mapping
+      const { data: custData, error: custError } = await supabase.from('customers').select('*');
+      if (custData) {
+        setCustomers(custData.map(mapCustomerFromDB));
+      } else if (custError) {
+         console.error("Customers Fetch Error:", custError);
+         // If error is permission related, customers will remain []
+      }
 
-      // Fetch Installations
+      // Fetch Installations with Mapping
       const { data: instData } = await supabase.from('installations').select('*');
-      if (instData) setInstallations(instData as Installation[]);
+      if (instData) {
+         setInstallations(instData.map(mapInstallationFromDB));
+      }
 
       // Fetch Tasks
       const { data: taskData } = await supabase.from('tasks').select('*');
@@ -85,7 +181,6 @@ const App: React.FC = () => {
       if (msgData) setMessages(msgData as Message[]);
 
       // Fetch Profiles (Employees)
-      // Mapujemy snake_case z bazy na camelCase w aplikacji
       const { data: userData } = await supabase.from('profiles').select('*');
       if (userData) {
         const mappedUsers: User[] = userData.map((u: any) => ({
@@ -93,17 +188,15 @@ const App: React.FC = () => {
           name: u.name,
           email: u.email,
           role: u.role as UserRole,
-          salesCategory: u.sales_category,
-          managerId: u.manager_id,
-          salesSettings: u.sales_settings
+          salesCategory: u.sales_category || u.salesCategory,
+          managerId: u.manager_id || u.managerId,
+          salesSettings: u.sales_settings || u.salesSettings
         }));
         setAllUsers(mappedUsers);
 
         // Try to load system settings from Admin profile if available
         const adminUser = mappedUsers.find(u => u.role === UserRole.ADMIN);
         if (adminUser && adminUser.salesSettings) {
-           // We store both SalesSettings and SystemSettings in the same JSON column in DB for simplicity
-           // Check if it has system setting keys
            const potentialSettings = adminUser.salesSettings as any;
            if (potentialSettings.cat2MarkupType) {
               setSystemSettings({
@@ -131,23 +224,15 @@ const App: React.FC = () => {
     }, 10000); 
 
     const syncProfile = async (sessionUser: any) => {
-      // 1. Pobierz profil pasujący do ID sesji (Ten, na który jesteśmy zalogowani)
       const { data: authProfile } = await supabase.from('profiles').select('*').eq('id', sessionUser.id).single();
-      
-      // 2. Pobierz profil pasujący do EMAILA (Ten stworzony przez Admina w CRM)
-      // Wykluczamy ID sesji, żeby znaleźć "tego drugiego" (duplikat stworzony w CRM)
       const { data: crmProfile } = await supabase.from('profiles').select('*').ilike('email', sessionUser.email).neq('id', sessionUser.id).single();
 
-      // SCENARIUSZ A: Mamy profil CRM, który nie jest jeszcze połączony z kontem logowania
       if (crmProfile) {
-         console.log("Wykryto profil CRM (stworzony przez Admina). Rozpoczynam synchronizację...");
+         console.log("Synchronizacja profilu CRM...");
          const crmId = crmProfile.id;
          const authId = sessionUser.id;
 
          if (authProfile) {
-            // SCENARIUSZ A.1: Istnieją OBA profile.
-            console.log("Scalanie kont: Nadpisywanie profilu Auth danymi z CRM...");
-            
             await supabase.from('profiles').update({
                 role: crmProfile.role,
                 sales_category: crmProfile.sales_category,
@@ -156,8 +241,9 @@ const App: React.FC = () => {
                 name: crmProfile.name
             }).eq('id', authId);
 
-            await supabase.from('customers').update({ repId: authId }).eq('repId', crmId);
-            await supabase.from('installations').update({ assignedTeam: authId }).eq('assignedTeam', crmId);
+            // Update FK references to the new ID
+            await supabase.from('customers').update({ rep_id: authId }).eq('rep_id', crmId);
+            await supabase.from('installations').update({ assigned_team: authId }).eq('assigned_team', crmId);
             await supabase.from('tasks').update({ assignedTo: authId }).eq('assignedTo', crmId);
             await supabase.from('tasks').update({ createdBy: authId }).eq('createdBy', crmId);
             await supabase.from('messages').update({ fromId: authId }).eq('fromId', crmId);
@@ -177,16 +263,8 @@ const App: React.FC = () => {
             };
 
          } else {
-            // SCENARIUSZ A.2: Istnieje tylko profil CRM
-            console.log("Migracja ID: Przypisywanie profilu CRM do konta Auth...");
-            
             const { error: updateError } = await supabase.from('profiles').update({ id: authId }).eq('id', crmId);
-            
             if (!updateError) {
-               await supabase.from('customers').update({ repId: authId }).eq('repId', crmId);
-               await supabase.from('installations').update({ assignedTeam: authId }).eq('assignedTeam', crmId);
-               await supabase.from('profiles').update({ manager_id: authId }).eq('manager_id', crmId);
-               
                return {
                   id: authId,
                   name: crmProfile.name,
@@ -200,7 +278,6 @@ const App: React.FC = () => {
          }
       } 
       
-      // SCENARIUSZ B: Brak profilu CRM, po prostu zwracamy profil Auth (jeśli istnieje)
       if (authProfile) {
         return {
           id: authProfile.id, 
@@ -213,12 +290,11 @@ const App: React.FC = () => {
         };
       } 
       
-      // SCENARIUSZ C: Brak jakiegokolwiek profilu. Tworzymy nowy domyślny.
       const newProfile = {
         id: sessionUser.id,
         name: sessionUser.user_metadata?.name || sessionUser.email?.split('@')[0] || 'Użytkownik',
         email: sessionUser.email || '',
-        role: UserRole.SALES, // Domyślnie Handlowiec
+        role: UserRole.SALES, 
         sales_category: '1'
       };
 
@@ -351,7 +427,21 @@ const App: React.FC = () => {
   // --- HANDLERS ---
 
   const handleUpdateInventoryItem = async (updatedItem: InventoryItem) => {
-    const { error } = await supabase.from('inventory').update(updatedItem).eq('id', updatedItem.id);
+    const dbItem = {
+      name: updatedItem.name,
+      category: updatedItem.category,
+      quantity: updatedItem.quantity,
+      min_quantity: updatedItem.minQuantity,
+      price: updatedItem.price,
+      unit: updatedItem.unit,
+      warranty: updatedItem.warranty,
+      power: updatedItem.power,
+      capacity: updatedItem.capacity,
+      phases: updatedItem.phases,
+      url: updatedItem.url,
+    };
+
+    const { error } = await supabase.from('inventory').update(dbItem).eq('id', updatedItem.id);
     if (!error) {
       setInventory(prev => prev.map(item => item.id === updatedItem.id ? updatedItem : item));
       showNotification(`Zaktualizowano produkt: ${updatedItem.name}`);
@@ -361,11 +451,44 @@ const App: React.FC = () => {
   };
 
   const handleAddItem = async (newItem: InventoryItem) => {
-    const { id, ...itemData } = newItem; 
-    const { data, error } = await supabase.from('inventory').insert([itemData]).select().single();
+    const dbItem = {
+      id: newItem.id || generateId(), // Ensure ID exists
+      name: newItem.name,
+      category: newItem.category,
+      quantity: newItem.quantity,
+      min_quantity: newItem.minQuantity,
+      price: newItem.price,
+      unit: newItem.unit,
+      warranty: newItem.warranty,
+      power: newItem.power,
+      capacity: newItem.capacity,
+      phases: newItem.phases,
+      url: newItem.url,
+      date_added: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase.from('inventory').insert([dbItem]).select().single();
     if (data && !error) {
-      setInventory(prev => [...prev, data as InventoryItem]);
+       const mappedNewItem: InventoryItem = {
+         id: data.id,
+         name: data.name,
+         category: data.category,
+         quantity: data.quantity,
+         minQuantity: data.min_quantity || data.minQuantity,
+         price: data.price,
+         unit: data.unit,
+         warranty: data.warranty,
+         power: data.power,
+         capacity: data.capacity,
+         phases: data.phases,
+         url: data.url,
+         dateAdded: data.date_added
+       };
+      setInventory(prev => [...prev, mappedNewItem]);
       showNotification(`Dodano nowy produkt: ${data.name}`);
+    } else {
+       console.error(error);
+       showNotification("Błąd dodawania produktu", 'error');
     }
   };
 
@@ -373,18 +496,45 @@ const App: React.FC = () => {
     if (!MOCK_INVENTORY || MOCK_INVENTORY.length === 0) return;
     
     const itemsToInsert = MOCK_INVENTORY.map(item => {
-       const { id, dateAdded, ...rest } = item;
+       // Explicitly include ID to prevent missing PK errors
        return { 
-          ...rest,
-          id: generateId(),
-          dateAdded: new Date().toISOString()
+          id: item.id,
+          name: item.name,
+          category: item.category,
+          quantity: item.quantity,
+          min_quantity: item.minQuantity, // camel to snake
+          price: item.price,
+          unit: item.unit,
+          warranty: item.warranty,
+          power: item.power,
+          capacity: item.capacity,
+          phases: item.phases,
+          url: item.url,
+          date_added: new Date().toISOString()
        };
     });
 
-    const { data, error } = await supabase.from('inventory').insert(itemsToInsert).select();
+    // Use upsert to handle re-runs gracefully without unique violations
+    const { data, error } = await supabase.from('inventory').upsert(itemsToInsert).select();
     
     if (!error && data) {
-       setInventory(data as InventoryItem[]);
+       const mappedNewItems: InventoryItem[] = data.map((item: any) => ({
+         id: item.id,
+         name: item.name,
+         category: item.category as ProductCategory,
+         quantity: item.quantity,
+         minQuantity: item.min_quantity || item.minQuantity,
+         price: item.price,
+         unit: item.unit,
+         warranty: item.warranty,
+         power: item.power,
+         capacity: item.capacity,
+         phases: item.phases,
+         url: item.url,
+         dateAdded: item.date_added
+       }));
+
+       setInventory(mappedNewItems);
        showNotification("Wgrano przykładowe produkty do bazy!");
     } else {
        console.error("Error inserting samples:", error);
@@ -395,33 +545,47 @@ const App: React.FC = () => {
   const handleAddCustomer = async (newCustomerData: { name: string, email: string, phone: string, address: string }) => {
     if (!currentUser) return;
     
-    const { data: newCust, error } = await supabase.from('customers').insert([{
+    // DB MAPPING FOR INSERT
+    const dbCustomer = {
       name: newCustomerData.name,
       email: newCustomerData.email,
       phone: newCustomerData.phone,
       address: newCustomerData.address,
-      repId: currentUser.id,
+      rep_id: currentUser.id, // snake_case
       notes: '',
-    }]).select().single();
+    };
+    
+    const { data: newCust, error } = await supabase.from('customers').insert([dbCustomer]).select().single();
 
     if (newCust && !error) {
-      setCustomers(prev => [...prev, newCust as Customer]);
-      const { data: newInst } = await supabase.from('installations').insert([{
-        customerId: newCust.id,
-        address: newCust.address,
+      // Map back to App format
+      const mappedNewCust = mapCustomerFromDB(newCust);
+      setCustomers(prev => [...prev, mappedNewCust]);
+      
+      const newInst: Partial<Installation> = {
+        customerId: mappedNewCust.id,
+        address: mappedNewCust.address,
         status: InstallationStatus.NEW,
         systemSizeKw: 0,
         price: 0
-      }]).select().single();
-      if (newInst) setInstallations(prev => [...prev, newInst as Installation]);
-      showNotification(`Dodano klienta: ${newCust.name}`);
+      };
+      
+      const dbInst = mapInstallationToDB(newInst);
+      
+      const { data: insertedInst } = await supabase.from('installations').insert([dbInst]).select().single();
+      
+      if (insertedInst) setInstallations(prev => [...prev, mapInstallationFromDB(insertedInst)]);
+      
+      showNotification(`Dodano klienta: ${mappedNewCust.name}`);
     } else {
+      console.error(error);
       showNotification("Błąd dodawania klienta", 'error');
     }
   };
 
   const handleUpdateCustomer = async (updatedCustomer: Customer) => {
-    const { error } = await supabase.from('customers').update(updatedCustomer).eq('id', updatedCustomer.id);
+    const dbCustomer = mapCustomerToDB(updatedCustomer);
+    const { error } = await supabase.from('customers').update(dbCustomer).eq('id', updatedCustomer.id);
     if (!error) {
       setCustomers(prev => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
       showNotification(`Zapisano dane klienta`);
@@ -431,7 +595,8 @@ const App: React.FC = () => {
   };
 
   const handleUpdateInstallation = async (updatedInstallation: Installation) => {
-    const { error } = await supabase.from('installations').update(updatedInstallation).eq('id', updatedInstallation.id);
+    const dbInst = mapInstallationToDB(updatedInstallation);
+    const { error } = await supabase.from('installations').update(dbInst).eq('id', updatedInstallation.id);
     if (!error) {
       setInstallations(prev => prev.map(i => i.id === updatedInstallation.id ? updatedInstallation : i));
       showNotification(`Zaktualizowano instalację`, 'info');
@@ -443,7 +608,13 @@ const App: React.FC = () => {
     if (inst) {
       const newHistory = [...(inst.paymentHistory || []), payment];
       const newTotal = newHistory.reduce((sum, p) => sum + p.amount, 0);
-      const { error } = await supabase.from('installations').update({ paymentHistory: newHistory, paidAmount: newTotal }).eq('id', installationId);
+      
+      // Update DB with mapping
+      const { error } = await supabase.from('installations').update({ 
+         payment_history: newHistory, 
+         paid_amount: newTotal 
+      }).eq('id', installationId);
+
       if (!error) setInstallations(prev => prev.map(i => i.id === installationId ? { ...i, paymentHistory: newHistory, paidAmount: newTotal } : i));
     }
   };
@@ -453,7 +624,12 @@ const App: React.FC = () => {
      if (inst) {
        const newHistory = (inst.paymentHistory || []).filter(p => p.id !== paymentId);
        const newTotal = newHistory.reduce((sum, p) => sum + p.amount, 0);
-       const { error } = await supabase.from('installations').update({ paymentHistory: newHistory, paidAmount: newTotal }).eq('id', installationId);
+       
+       const { error } = await supabase.from('installations').update({ 
+         payment_history: newHistory, 
+         paid_amount: newTotal 
+       }).eq('id', installationId);
+
        if (!error) {
          setInstallations(prev => prev.map(i => i.id === installationId ? { ...i, paymentHistory: newHistory, paidAmount: newTotal } : i));
          showNotification("Usunięto wpłatę", 'info');
@@ -498,8 +674,6 @@ const App: React.FC = () => {
 
   const handleUpdateSystemSettings = async (settings: SystemSettings) => {
     setSystemSettings(settings);
-    // Persist logic: Try to save to current user (admin) profile meta data if possible
-    // We are reusing the sales_settings column but merging the system config into it
     if (currentUser) {
        const newSettings = {
          ...currentUser.salesSettings,
@@ -521,6 +695,21 @@ const App: React.FC = () => {
   };
 
   const handleNavigateToCustomer = (customerId: string) => {
+    // 1. Check if customer exists globally
+    const customer = customers.find(c => c.id === customerId);
+    if (!customer) {
+       showNotification('Błąd: Klient powiązany z tą instalacją nie istnieje w bazie (rekord osierocony).', 'error');
+       return;
+    }
+
+    // 2. Check permissions - Admin/Office always has access
+    if (currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.OFFICE) {
+       setSelectedCustomerId(customerId);
+       setCurrentView('CUSTOMERS');
+       return;
+    }
+
+    // 3. Check access for others
     const hasAccess = filteredCustomers.some(c => c.id === customerId);
     if (hasAccess) {
       setSelectedCustomerId(customerId);
@@ -535,27 +724,36 @@ const App: React.FC = () => {
     let customerId = offer.calculatorState.clientId;
 
     if (isNewClient && newClientData) {
-      const { data: newCust, error: custError } = await supabase.from('customers').insert([{
+      // Create new customer with proper mapping
+      const dbCustomer = {
         name: newClientData.name,
         address: newClientData.address,
         phone: newClientData.phone,
         email: newClientData.email || '', 
         notes: 'Klient dodany z poziomu kalkulatora PV',
-        repId: currentUser.id,
+        rep_id: currentUser.id, // snake_case
         offers: [offer]
-      }]).select().single();
+      };
+      
+      const { data: newCust, error: custError } = await supabase.from('customers').insert([dbCustomer]).select().single();
 
       if (newCust && !custError) {
-        const { data: newInst } = await supabase.from('installations').insert([{
-           customerId: newCust.id,
+        const mappedNewCust = mapCustomerFromDB(newCust);
+        
+        // Create installation
+        const newInst = {
+           customerId: mappedNewCust.id,
            address: newClientData.address,
            status: InstallationStatus.NEW,
            systemSizeKw: 0,
            price: 0
-        }]).select().single();
+        };
+        const dbInst = mapInstallationToDB(newInst);
+        
+        const { data: insertedInst } = await supabase.from('installations').insert([dbInst]).select().single();
 
-        setCustomers(prev => [...prev, newCust as Customer]);
-        if (newInst) setInstallations(prev => [...prev, newInst as Installation]);
+        setCustomers(prev => [...prev, mappedNewCust]);
+        if (insertedInst) setInstallations(prev => [...prev, mapInstallationFromDB(insertedInst)]);
         showNotification(`Utworzono nowego klienta i zapisano ofertę.`);
       }
     } else if (customerId !== 'ANON') {
@@ -592,28 +790,39 @@ const App: React.FC = () => {
     const storageSizeKw = storageItem && storageItem.capacity ? storageItem.capacity * calculatorState.storageCount : 0;
 
     const existingInst = installations.find(i => i.customerId === customerId);
-    const updateData = {
+    const updateData: Partial<Installation> = {
       price: finalPrice,
       systemSizeKw,
       status: InstallationStatus.AUDIT,
-      panelModel: panelItem?.name,
-      inverterModel: inverterItem?.name,
-      storageModel: storageItem?.name,
+      panelModel: panelItem?.name || '',
+      inverterModel: inverterItem?.name || '',
+      storageModel: storageItem?.name || '',
       storageSizeKw,
-      mountingSystem: mountingItem?.name,
+      mountingSystem: mountingItem?.name || '',
       trenchLength: calculatorState.trenchLength,
-      notes: existingInst ? (existingInst.notes || '') + '\n' + offerNote : offerNote
+      notes: existingInst ? (existingInst.notes || '') + '\n' + offerNote : offerNote,
+      commissionValue: offer.personalMarkup || 0
     };
-
+    
     let newOrUpdatedInst: Installation | null = null;
+    
     if (existingInst) {
-       const { data, error } = await supabase.from('installations').update(updateData).eq('id', existingInst.id).select().single();
-       if (data && !error) newOrUpdatedInst = data as Installation;
+       // Only update fields, keep id
+       const dbUpdateData = mapInstallationToDB(updateData);
+       const { data, error } = await supabase.from('installations').update(dbUpdateData).eq('id', existingInst.id).select().single();
+       if (data && !error) newOrUpdatedInst = mapInstallationFromDB(data);
     } else {
-       const { data, error } = await supabase.from('installations').insert([{ customerId, address: customer.address, ...updateData }]).select().single();
-       if (data && !error) newOrUpdatedInst = data as Installation;
+       // Insert new
+       const insertData = mapInstallationToDB({
+          customerId, 
+          address: customer.address, 
+          ...updateData
+       });
+       const { data, error } = await supabase.from('installations').insert([insertData]).select().single();
+       if (data && !error) newOrUpdatedInst = mapInstallationFromDB(data);
     }
 
+    // FORCE LOCAL STATE UPDATE IMMEDIATELY
     if (newOrUpdatedInst) {
        setInstallations(prev => {
           const others = prev.filter(i => i.id !== newOrUpdatedInst!.id);
