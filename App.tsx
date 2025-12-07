@@ -219,9 +219,10 @@ const App: React.FC = () => {
 
     const safetyTimeout = setTimeout(() => {
       if (mounted && loading) {
-        console.warn("Session check timed out.");
+        console.warn("Session check timed out - forcing load complete.");
+        setLoading(false);
       }
-    }, 10000); 
+    }, 3000); 
 
     const syncProfile = async (sessionUser: any) => {
       const { data: authProfile } = await supabase.from('profiles').select('*').eq('id', sessionUser.id).single();
@@ -334,8 +335,10 @@ const App: React.FC = () => {
       } catch (e) {
         console.error("Session check failed", e);
       } finally {
-        if (mounted) setLoading(false);
-        clearTimeout(safetyTimeout);
+        if (mounted) {
+          setLoading(false);
+          clearTimeout(safetyTimeout);
+        }
       }
     };
 
