@@ -1,5 +1,3 @@
-
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
@@ -60,7 +58,7 @@ const App: React.FC = () => {
     setNotification({ message, type });
   };
 
-  // --- MAPPERS (CRITICAL FOR DB SYNC - HYBRID APPROACH) ---
+  // --- MAPPERS (CRITICAL FOR DB SYNC - SNAKE_CASE ONLY FOR WRITES) ---
   
   const mapCustomerFromDB = (c: any): Customer => ({
     id: c.id,
@@ -69,7 +67,7 @@ const App: React.FC = () => {
     phone: c.phone || '',
     address: c.address || '',
     notes: c.notes || '',
-    // Try snake_case first (standard), then camelCase (legacy/auto-generated)
+    // Hybrid read: try snake_case first (standard), then camelCase (legacy)
     repId: c.rep_id || c.repId || '', 
     files: c.files || [], 
     auditPhotos: c.audit_photos || c.auditPhotos || [],
@@ -84,6 +82,7 @@ const App: React.FC = () => {
     if (c.phone) db.phone = c.phone;
     if (c.address) db.address = c.address;
     if (c.notes) db.notes = c.notes;
+    // Strictly snake_case for writes
     if (c.repId) db.rep_id = c.repId;
     if (c.offers) db.offers = c.offers;
     return db;
@@ -91,9 +90,9 @@ const App: React.FC = () => {
 
   const mapInstallationFromDB = (i: any): Installation => ({
     id: i.id,
-    customerId: i.customer_id || i.customerId || '', // Hybrid check
+    customerId: i.customer_id || i.customerId || '', // Hybrid read
     address: i.address || '',
-    systemSizeKw: i.system_size_kw || i.systemSizeKw || 0, // Hybrid check
+    systemSizeKw: i.system_size_kw || i.systemSizeKw || 0, // Hybrid read
     status: i.status as InstallationStatus,
     dateScheduled: i.date_scheduled || i.dateScheduled,
     assignedTeam: i.assigned_team || i.assignedTeam,
@@ -113,9 +112,10 @@ const App: React.FC = () => {
   const mapInstallationToDB = (i: Partial<Installation>): any => {
     const db: any = {};
     if (i.id) db.id = i.id;
-    if (i.customerId) { db.customer_id = i.customerId; db.customerId = i.customerId; } // Send both for robust compat if schema varies
+    // Strictly snake_case for writes to avoid "Column not found" errors
+    if (i.customerId) db.customer_id = i.customerId; 
     if (i.address) db.address = i.address;
-    if (i.systemSizeKw !== undefined) { db.system_size_kw = i.systemSizeKw; db.systemSizeKw = i.systemSizeKw; }
+    if (i.systemSizeKw !== undefined) db.system_size_kw = i.systemSizeKw;
     if (i.status) db.status = i.status;
     if (i.dateScheduled !== undefined) db.date_scheduled = i.dateScheduled;
     if (i.assignedTeam !== undefined) db.assigned_team = i.assignedTeam;
@@ -235,7 +235,6 @@ const App: React.FC = () => {
         const { data: crmProfile } = await supabase.from('profiles').select('*').ilike('email', sessionUser.email).neq('id', sessionUser.id).maybeSingle();
 
         if (crmProfile) {
-           console.log("Synchronizacja profilu CRM...");
            const crmId = crmProfile.id;
            const authId = sessionUser.id;
 
@@ -327,7 +326,7 @@ const App: React.FC = () => {
     };
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("Auth Event:", event);
+      // console.log("Auth Event:", event);
       if (session?.user) {
          // Only run heavy sync on explicit sign-in or initialization
          if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
@@ -601,11 +600,22 @@ const App: React.FC = () => {
   };
 
   const handleUpdateInstallation = async (updatedInstallation: Installation) => {
+    // 1. Optimistic Update
+    const previousInstallations = [...installations];
+    setInstallations(prev => prev.map(i => i.id === updatedInstallation.id ? updatedInstallation : i));
+
     const dbInst = mapInstallationToDB(updatedInstallation);
+    
+    // 2. Database Update
     const { error } = await supabase.from('installations').update(dbInst).eq('id', updatedInstallation.id);
+    
     if (!error) {
-      setInstallations(prev => prev.map(i => i.id === updatedInstallation.id ? updatedInstallation : i));
       showNotification(`Zaktualizowano instalację`, 'info');
+    } else {
+      // 3. Rollback on Error
+      setInstallations(previousInstallations);
+      console.error("Update error:", error);
+      showNotification(`Błąd aktualizacji: ${error.message}`, 'error');
     }
   };
 
