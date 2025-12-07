@@ -11,7 +11,7 @@ import { Login } from './components/Login';
 import { Notification, NotificationType } from './components/Notification';
 import { Customer, Installation, InventoryItem, ViewState, Offer, CalculatorState, InstallationStatus, UserRole, PaymentEntry, Task, Message, SalesSettings, ProductCategory, User, SystemSettings } from './types';
 import { supabase } from './services/supabaseClient';
-import { Menu } from 'lucide-react';
+import { Menu, Loader2 } from 'lucide-react';
 import { MOCK_INVENTORY } from './constants';
 
 // Safe ID generator fallback
@@ -216,7 +216,7 @@ const App: React.FC = () => {
   };
 
   // --- SAFETY TIMEOUT ---
-  // If loading gets stuck for > 4 seconds (e.g. tab resume race condition), force unlock
+  // If loading gets stuck for > 3 seconds (e.g. tab resume race condition), force unlock
   useEffect(() => {
     let safetyTimer: ReturnType<typeof setTimeout>;
     if (loading) {
@@ -225,30 +225,45 @@ const App: React.FC = () => {
              console.warn("Loading timeout reached. Forcing unlock.");
              setLoading(false);
           }
-       }, 4000);
+       }, 3000);
     }
     return () => clearTimeout(safetyTimer);
   }, [loading]);
 
-  // --- TAB VISIBILITY LISTENER ---
-  // When coming back to the tab, check session silently without blocking UI
+  // --- MOBILE LIFECYCLE HANDLERS ---
   useEffect(() => {
     const handleVisibilityChange = async () => {
+      // SILENT REVALIDATION: Do not set loading=true on visibility change.
+      // This prevents the "spinning wheel" on mobile when resuming the app.
       if (document.visibilityState === 'visible') {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-           // Token expired or invalid
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error || !session) {
+           // Session expired? Kick to login immediately.
            setCurrentUser(null);
-        } else if (!currentUser) {
-           // Session exists but app state empty? Reload user.
-           setLoading(true); // Short loading is okay here
+        } else {
+           // Session is valid. We are good. 
+           // If currentUser was null (rare race condition), reload.
+           if (!currentUser) {
+              setLoading(true); // Only blocking load if we really lost the user state
+           }
         }
       }
     };
 
+    const handleOnline = () => {
+        // When network returns, silently try to refresh data if logged in
+        if (currentUser) {
+            fetchData();
+        }
+    };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('online', handleOnline);
+    
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleOnline);
     };
   }, [currentUser]);
 
@@ -281,12 +296,20 @@ const App: React.FC = () => {
                   name: crmProfile.name
               }).eq('id', authId);
 
-              await supabase.from('customers').update({ rep_id: authId }).eq('rep_id', crmId);
-              await supabase.from('installations').update({ assigned_team: authId }).eq('assigned_team', crmId);
-              await supabase.from('tasks').update({ assignedTo: authId }).eq('assignedTo', crmId);
-              await supabase.from('messages').update({ fromId: authId }).eq('fromId', crmId);
-              await supabase.from('messages').update({ toId: authId }).eq('toId', crmId);
-              await supabase.from('profiles').update({ manager_id: authId }).eq('manager_id', crmId);
+              // Update foreign keys
+              const tablesToUpdate = [
+                  { table: 'customers', col: 'rep_id' },
+                  { table: 'installations', col: 'assigned_team' },
+                  { table: 'tasks', col: 'assignedTo' },
+                  { table: 'messages', col: 'fromId' },
+                  { table: 'messages', col: 'toId' },
+                  { table: 'profiles', col: 'manager_id' }
+              ];
+
+              for (const t of tablesToUpdate) {
+                  await supabase.from(t.table).update({ [t.col]: authId }).eq(t.col, crmId);
+              }
+              
               await supabase.from('profiles').delete().eq('id', crmId);
               
               return {
@@ -378,8 +401,9 @@ const App: React.FC = () => {
 
        const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
           if (event === 'SIGNED_IN') {
-             // Optimized: Don't trigger full loading if we already have the user (prevents spinner on tab resume)
-             if (!currentUser || currentUser.id !== session?.user.id) {
+             // Only show loader if we are actually switching users or logging in from scratch.
+             // If we are just refreshing a token for the SAME user, keep UI active (Silent Refresh).
+             if (!currentUser || (session?.user && currentUser.id !== session.user.id)) {
                  setLoading(true);
                  const user = await syncProfile(session?.user);
                  if (mounted) {
@@ -393,7 +417,6 @@ const App: React.FC = () => {
                 setLoading(false);
              }
           }
-          // Ignored events: TOKEN_REFRESHED, USER_UPDATED (to prevent UI flicker)
        });
 
        return () => {
@@ -419,10 +442,14 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     try {
+      setLoading(true);
       await supabase.auth.signOut();
       setCurrentUser(null);
+      setLoading(false);
     } catch (e) {
       console.error("Logout error", e);
+      setCurrentUser(null);
+      setLoading(false);
     }
   };
 
@@ -927,22 +954,26 @@ const App: React.FC = () => {
   };
 
   const handleUpdateUser = async (updatedUser: User) => {
+    // Prepare DB object with snake_case
     const dbProfile = {
+      id: updatedUser.id, // Critical for upsert
       name: updatedUser.name,
+      email: updatedUser.email,
       role: updatedUser.role,
       sales_category: updatedUser.salesCategory || null,
       manager_id: updatedUser.managerId || null,
       sales_settings: updatedUser.salesSettings || null
     };
 
-    const { error } = await supabase.from('profiles').update(dbProfile).eq('id', updatedUser.id);
+    // Use upsert to handle both updates and "ensure existence"
+    const { error } = await supabase.from('profiles').upsert(dbProfile);
     
     if (!error) {
        setAllUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
        showNotification("Zaktualizowano dane pracownika");
     } else {
        console.error("Error updating user:", error);
-       showNotification("Błąd aktualizacji pracownika", 'error');
+       showNotification(`Błąd aktualizacji: ${error.message}`, 'error');
     }
   };
 
@@ -997,7 +1028,7 @@ const App: React.FC = () => {
         return <Inventory inventory={inventory} onUpdateItem={handleUpdateInventoryItem} onAddItem={handleAddItem} onLoadSampleData={handleLoadSampleInventory} />;
       case 'APPLICATIONS':
         return <Applications 
-          customers={filteredCustomers}
+          customers={filteredCustomers} 
           inventory={inventory}
           onSaveOffer={handleSaveOffer}
           initialState={offerToEdit}
@@ -1018,7 +1049,7 @@ const App: React.FC = () => {
     }
   };
 
-  if (loading) return <div className="flex h-screen items-center justify-center bg-slate-900 text-white"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div></div>;
+  if (loading) return <div className="flex h-screen items-center justify-center bg-slate-900 text-white"><div className="flex flex-col items-center gap-4"><Loader2 className="animate-spin h-10 w-10 text-amber-500" /><p className="text-sm text-slate-400">Ładowanie systemu...</p></div></div>;
 
   if (!currentUser) return <Login onLogin={() => {}} />;
 
@@ -1034,7 +1065,7 @@ const App: React.FC = () => {
         onClose={() => setIsSidebarOpen(false)}
       />
       <main className="flex-1 flex flex-col h-full overflow-hidden relative w-full">
-        <header className="bg-white border-b border-slate-200 h-16 flex items-center px-4 md:px-8 shadow-sm justify-between z-10">
+        <header className="bg-white border-b border-slate-200 h-16 flex items-center px-4 md:px-8 shadow-sm justify-between z-10 shrink-0">
            <div className="flex items-center">
              <button onClick={() => setIsSidebarOpen(true)} className="mr-4 md:hidden text-slate-500 hover:text-slate-800"><Menu className="w-6 h-6" /></button>
              <h1 className="text-lg md:text-xl font-bold text-slate-800 truncate">

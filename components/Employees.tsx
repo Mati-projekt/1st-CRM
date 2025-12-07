@@ -1,11 +1,10 @@
 
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, UserRole, SystemSettings } from '../types';
-import { Users, Plus, Save, Trash2, UserCog, Settings, ShieldCheck, UserCircle, X, Edit2, Check, Mail, Lock } from 'lucide-react';
+import { Plus, Save, Trash2, UserCog, Settings, UserCircle, X, Edit2, Mail, Lock } from 'lucide-react';
 
 interface EmployeesProps {
-  users: User[];
+  users?: User[];
   onAddUser: (user: Partial<User>, password?: string) => void;
   onUpdateUser: (user: User) => void;
   onDeleteUser: (userId: string) => void;
@@ -14,7 +13,7 @@ interface EmployeesProps {
 }
 
 export const Employees: React.FC<EmployeesProps> = ({ 
-  users, 
+  users = [], 
   onAddUser, 
   onUpdateUser,
   onDeleteUser,
@@ -36,19 +35,26 @@ export const Employees: React.FC<EmployeesProps> = ({
   });
   const [newPassword, setNewPassword] = useState('');
 
-  const [markupType, setMarkupType] = useState(systemSettings.cat2MarkupType);
-  const [markupValue, setMarkupValue] = useState(systemSettings.cat2MarkupValue);
+  // Settings State with Safe Defaults
+  const [markupType, setMarkupType] = useState<'PERCENT' | 'FIXED'>('PERCENT');
+  const [markupValue, setMarkupValue] = useState<number>(5);
 
-  const salesManagers = users.filter(u => u.role === UserRole.SALES_MANAGER);
+  // Sync settings when they are loaded from App/DB
+  useEffect(() => {
+    if (systemSettings) {
+      setMarkupType(systemSettings.cat2MarkupType || 'PERCENT');
+      setMarkupValue(systemSettings.cat2MarkupValue || 0);
+    }
+  }, [systemSettings]);
+
+  const salesManagers = users ? users.filter(u => u.role === UserRole.SALES_MANAGER) : [];
 
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUser.name || !newUser.email) return;
     
-    // Cleanup fields based on role
     const userToAdd = { ...newUser };
     if (userToAdd.role !== UserRole.SALES) {
-       // Only sales reps need categories and managers
        delete userToAdd.salesCategory;
        delete userToAdd.managerId;
     }
@@ -130,14 +136,14 @@ export const Employees: React.FC<EmployeesProps> = ({
                       </tr>
                    </thead>
                    <tbody className="divide-y divide-slate-100">
-                      {users.map(user => {
+                      {users && users.length > 0 ? users.map(user => {
                          const manager = user.managerId ? users.find(u => u.id === user.managerId) : null;
                          return (
                             <tr key={user.id} className="hover:bg-slate-50">
                                <td className="p-4">
                                   <div className="flex items-center">
                                      <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center mr-3 text-slate-500 font-bold shrink-0">
-                                        {user.name.charAt(0)}
+                                        {user.name ? user.name.charAt(0).toUpperCase() : '?'}
                                      </div>
                                      <div>
                                         <p className="font-bold text-slate-800 text-sm">{user.name}</p>
@@ -173,12 +179,18 @@ export const Employees: React.FC<EmployeesProps> = ({
                                     className="text-slate-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-lg transition-colors"
                                     title="Edytuj"
                                   >
-                                     <UserCog className="w-5 h-5"/>
+                                     <Edit2 className="w-5 h-5"/>
                                   </button>
                                </td>
                             </tr>
                          );
-                      })}
+                      }) : (
+                        <tr>
+                          <td colSpan={4} className="p-8 text-center text-slate-400">
+                            Brak pracowników do wyświetlenia.
+                          </td>
+                        </tr>
+                      )}
                    </tbody>
                 </table>
               </div>
@@ -235,114 +247,68 @@ export const Employees: React.FC<EmployeesProps> = ({
          </div>
       )}
 
-      {/* Add User Modal - Robust Layout */}
+      {/* Add User Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-           {/* Backdrop */}
            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAddModal(false)}></div>
-           
-           {/* Modal Container */}
            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col relative z-10 max-h-[90vh]">
-              
-              {/* Header */}
               <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/80 rounded-t-2xl shrink-0">
                   <h3 className="text-xl font-bold text-slate-800 flex items-center">
                      <Plus className="w-6 h-6 mr-2 text-blue-600" /> Dodaj Pracownika
                   </h3>
-                  <button 
-                    onClick={() => setShowAddModal(false)} 
-                    className="text-slate-400 hover:text-slate-600 transition-colors p-2 hover:bg-slate-200 rounded-full"
-                  >
+                  <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 p-2 hover:bg-slate-200 rounded-full">
                     <X className="w-5 h-5" />
                   </button>
               </div>
 
-              {/* Scrollable Form Content */}
               <div className="p-6 overflow-y-auto custom-scrollbar">
                   <form id="addUserForm" onSubmit={handleAddSubmit} className="space-y-5">
                      <div>
                         <label className="block text-sm font-bold text-slate-700 mb-1.5">Imię i Nazwisko</label>
                         <div className="relative">
                             <UserCircle className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
-                            <input 
-                                type="text" 
-                                required 
-                                value={newUser.name} 
-                                onChange={e => setNewUser({...newUser, name: e.target.value})} 
-                                className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none shadow-sm transition-all placeholder:text-slate-400" 
-                                placeholder="np. Jan Kowalski" 
-                            />
+                            <input type="text" required value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="np. Jan Kowalski" />
                         </div>
                      </div>
-                     
                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                            <label className="block text-sm font-bold text-slate-700 mb-1.5">Email (Login)</label>
                            <div className="relative">
                                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                               <input 
-                                   type="email" 
-                                   required 
-                                   value={newUser.email} 
-                                   onChange={e => setNewUser({...newUser, email: e.target.value})} 
-                                   className="w-full pl-9 pr-3 py-3 border border-slate-300 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none shadow-sm transition-all placeholder:text-slate-400 text-sm" 
-                                   placeholder="jan@firma.pl" 
-                               />
+                               <input type="email" required value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} className="w-full pl-9 pr-3 py-3 border border-slate-300 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="jan@firma.pl" />
                            </div>
                         </div>
                         <div>
                            <label className="block text-sm font-bold text-slate-700 mb-1.5">Hasło</label>
                            <div className="relative">
                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                               <input 
-                                   type="text" 
-                                   required 
-                                   value={newPassword} 
-                                   onChange={e => setNewPassword(e.target.value)} 
-                                   className="w-full pl-9 pr-3 py-3 border border-slate-300 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none shadow-sm transition-all placeholder:text-slate-400 text-sm" 
-                                   placeholder="Min. 6 znaków" 
-                               />
+                               <input type="text" required value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full pl-9 pr-3 py-3 border border-slate-300 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="Min. 6 znaków" />
                            </div>
                         </div>
                      </div>
-                     
                      <div>
                         <label className="block text-sm font-bold text-slate-700 mb-1.5">Rola w systemie</label>
-                        <select 
-                            value={newUser.role} 
-                            onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})} 
-                            className="w-full p-3 border border-slate-300 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none shadow-sm"
-                        >
+                        <select value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})} className="w-full p-3 border border-slate-300 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none">
                            {Object.values(UserRole).map(role => (
                               <option key={role} value={role}>{role}</option>
                            ))}
                         </select>
                      </div>
-                     
-                     {/* Sales Role Options */}
                      {newUser.role === UserRole.SALES && (
-                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4 animate-fade-in">
+                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
                            <div className="flex items-center space-x-2 text-blue-800 font-bold text-sm pb-2 border-b border-slate-200">
                                 <Settings className="w-4 h-4" /> <span>Opcje Handlowca</span>
                            </div>
                            <div>
                               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Kategoria Prowizyjna</label>
-                              <select 
-                                value={newUser.salesCategory} 
-                                onChange={e => setNewUser({...newUser, salesCategory: e.target.value as any})} 
-                                className="w-full p-2.5 border border-slate-300 rounded-lg bg-white text-sm text-slate-800"
-                              >
+                              <select value={newUser.salesCategory} onChange={e => setNewUser({...newUser, salesCategory: e.target.value as any})} className="w-full p-2.5 border border-slate-300 rounded-lg bg-white text-sm text-slate-800">
                                  <option value="1">Kategoria 1 (Standard)</option>
                                  <option value="2">Kategoria 2 (Wyższa cena)</option>
                               </select>
                            </div>
                            <div>
                               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Przypisz do Kierownika</label>
-                              <select 
-                                value={newUser.managerId || ''} 
-                                onChange={e => setNewUser({...newUser, managerId: e.target.value})} 
-                                className="w-full p-2.5 border border-slate-300 rounded-lg bg-white text-sm text-slate-800"
-                              >
+                              <select value={newUser.managerId || ''} onChange={e => setNewUser({...newUser, managerId: e.target.value})} className="w-full p-2.5 border border-slate-300 rounded-lg bg-white text-sm text-slate-800">
                                  <option value="">-- Bezpośrednio pod Admina --</option>
                                  {salesManagers.map(m => (
                                     <option key={m.id} value={m.id}>{m.name}</option>
@@ -353,21 +319,9 @@ export const Employees: React.FC<EmployeesProps> = ({
                      )}
                   </form>
               </div>
-              
-              {/* Footer */}
               <div className="p-5 border-t border-slate-100 flex justify-end space-x-3 bg-white rounded-b-2xl shrink-0">
-                  <button 
-                      type="button" 
-                      onClick={() => setShowAddModal(false)} 
-                      className="px-5 py-2.5 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition-colors"
-                  >
-                      Anuluj
-                  </button>
-                  <button 
-                      type="submit"
-                      form="addUserForm"
-                      className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold shadow-sm hover:bg-blue-700 transition-colors flex items-center"
-                  >
+                  <button type="button" onClick={() => setShowAddModal(false)} className="px-5 py-2.5 text-slate-500 font-bold hover:bg-slate-100 rounded-xl">Anuluj</button>
+                  <button type="submit" form="addUserForm" className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold shadow-sm hover:bg-blue-700 flex items-center">
                       <Plus className="w-4 h-4 mr-2" /> Utwórz Konto
                   </button>
               </div>
@@ -375,64 +329,37 @@ export const Employees: React.FC<EmployeesProps> = ({
         </div>
       )}
 
-      {/* EDIT USER MODAL - Robust Layout */}
+      {/* EDIT USER MODAL */}
       {editingUser && (
          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-             {/* Backdrop */}
              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setEditingUser(null)}></div>
-
-             {/* Modal Container */}
              <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg flex flex-col relative z-10 max-h-[90vh]">
                 <div className="flex justify-between items-center p-5 border-b border-slate-100 bg-slate-50/80 rounded-t-xl shrink-0">
                    <h3 className="text-xl font-bold text-slate-800 flex items-center">
                       <Edit2 className="w-5 h-5 mr-2 text-blue-600" /> Edycja Pracownika
                    </h3>
-                   <button 
-                     onClick={() => setEditingUser(null)}
-                     className="text-slate-400 hover:text-slate-600 transition-colors p-2 hover:bg-slate-200 rounded-full"
-                   >
+                   <button onClick={() => setEditingUser(null)} className="text-slate-400 hover:text-slate-600 p-2 hover:bg-slate-200 rounded-full">
                       <X className="w-5 h-5" />
                    </button>
                 </div>
-
                 <div className="p-6 overflow-y-auto custom-scrollbar">
                   <form id="editUserForm" onSubmit={handleEditSubmit} className="space-y-5">
                      <div>
                         <label className="block text-sm font-bold text-slate-600 mb-1">Imię i Nazwisko</label>
-                        <input 
-                          type="text" 
-                          required 
-                          value={editingUser.name} 
-                          onChange={e => setEditingUser({...editingUser, name: e.target.value})} 
-                          className="w-full p-3 border border-slate-300 rounded-lg text-slate-900 bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                        />
+                        <input type="text" required value={editingUser.name} onChange={e => setEditingUser({...editingUser, name: e.target.value})} className="w-full p-3 border border-slate-300 rounded-lg text-slate-900 bg-white focus:ring-2 focus:ring-blue-500 outline-none" />
                      </div>
-
                      <div>
                         <label className="block text-sm font-bold text-slate-600 mb-1">Email (Login)</label>
-                        <input 
-                          type="email" 
-                          disabled 
-                          value={editingUser.email} 
-                          className="w-full p-3 border border-slate-200 rounded-lg bg-slate-100 text-slate-500 cursor-not-allowed" 
-                          title="Email nie może być zmieniony"
-                        />
-                        <p className="text-xs text-slate-400 mt-1">Email służy do logowania i nie może być edytowany.</p>
+                        <input type="email" disabled value={editingUser.email} className="w-full p-3 border border-slate-200 rounded-lg bg-slate-100 text-slate-500 cursor-not-allowed" />
                      </div>
-
                      <div>
                         <label className="block text-sm font-bold text-slate-600 mb-1">Rola w systemie</label>
-                        <select 
-                          value={editingUser.role} 
-                          onChange={e => setEditingUser({...editingUser, role: e.target.value as UserRole})} 
-                          className="w-full p-3 border border-slate-300 rounded-lg bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
-                        >
+                        <select value={editingUser.role} onChange={e => setEditingUser({...editingUser, role: e.target.value as UserRole})} className="w-full p-3 border border-slate-300 rounded-lg bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none">
                            {Object.values(UserRole).map(role => (
                               <option key={role} value={role}>{role}</option>
                            ))}
                         </select>
                      </div>
-
                      {editingUser.role === UserRole.SALES && (
                         <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
                            <div className="flex items-center space-x-2 text-blue-800 font-bold text-sm pb-2 border-b border-slate-200">
@@ -440,22 +367,14 @@ export const Employees: React.FC<EmployeesProps> = ({
                            </div>
                            <div>
                               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Kategoria Prowizyjna</label>
-                              <select 
-                                 value={editingUser.salesCategory || '1'} 
-                                 onChange={e => setEditingUser({...editingUser, salesCategory: e.target.value as any})} 
-                                 className="w-full p-2 border border-slate-300 rounded bg-white text-sm text-slate-800"
-                              >
+                              <select value={editingUser.salesCategory || '1'} onChange={e => setEditingUser({...editingUser, salesCategory: e.target.value as any})} className="w-full p-2 border border-slate-300 rounded bg-white text-sm text-slate-800">
                                  <option value="1">Kategoria 1 (Standard)</option>
-                                 <option value="2">Kategoria 2 (Wyższa cena +{systemSettings.cat2MarkupValue}{systemSettings.cat2MarkupType === 'PERCENT' ? '%' : 'PLN'})</option>
+                                 <option value="2">Kategoria 2 (Wyższa cena +{systemSettings?.cat2MarkupValue || 0}{systemSettings?.cat2MarkupType === 'PERCENT' ? '%' : 'PLN'})</option>
                               </select>
                            </div>
                            <div>
                               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Przełożony (Kierownik)</label>
-                              <select 
-                                 value={editingUser.managerId || ''} 
-                                 onChange={e => setEditingUser({...editingUser, managerId: e.target.value})} 
-                                 className="w-full p-2 border border-slate-300 rounded bg-white text-sm text-slate-800"
-                              >
+                              <select value={editingUser.managerId || ''} onChange={e => setEditingUser({...editingUser, managerId: e.target.value})} className="w-full p-2 border border-slate-300 rounded bg-white text-sm text-slate-800">
                                  <option value="">-- Bezpośrednio pod Admina --</option>
                                  {salesManagers.filter(m => m.id !== editingUser.id).map(m => (
                                     <option key={m.id} value={m.id}>{m.name}</option>
@@ -466,28 +385,13 @@ export const Employees: React.FC<EmployeesProps> = ({
                      )}
                   </form>
                 </div>
-
                 <div className="p-5 border-t border-slate-100 flex justify-between items-center bg-white rounded-b-xl shrink-0">
-                    <button 
-                       type="button" 
-                       onClick={() => handleDeleteClick(editingUser.id)}
-                       className="px-4 py-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg font-bold transition-colors flex items-center"
-                    >
+                    <button type="button" onClick={() => handleDeleteClick(editingUser.id)} className="px-4 py-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg font-bold flex items-center">
                        <Trash2 className="w-4 h-4 mr-2" /> Usuń
                     </button>
                     <div className="flex space-x-3">
-                       <button 
-                          type="button" 
-                          onClick={() => setEditingUser(null)} 
-                          className="px-5 py-2 text-slate-500 font-bold hover:bg-slate-100 rounded-lg transition-colors"
-                       >
-                          Anuluj
-                       </button>
-                       <button 
-                          type="submit"
-                          form="editUserForm"
-                          className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-sm hover:bg-blue-700 transition-colors flex items-center"
-                       >
+                       <button type="button" onClick={() => setEditingUser(null)} className="px-5 py-2 text-slate-500 font-bold hover:bg-slate-100 rounded-lg">Anuluj</button>
+                       <button type="submit" form="editUserForm" className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-sm hover:bg-blue-700 flex items-center">
                           <Save className="w-4 h-4 mr-2" /> Zapisz
                        </button>
                     </div>
