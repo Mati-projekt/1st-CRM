@@ -104,6 +104,9 @@ export const MOCK_INVENTORY: InventoryItem[] = [
   { id: 'a1', name: 'Kabel solarny 6mm2', category: ProductCategory.ADDONS, quantity: 500, minQuantity: 200, price: 4, unit: 'mb', warranty: '5 lat', dateAdded: '2023-09-20T14:20:00Z' },
   { id: 'a2', name: 'Złączki MC4 (Para)', category: ProductCategory.ADDONS, quantity: 200, minQuantity: 50, price: 8, unit: 'szt.', warranty: '2 lata', dateAdded: '2023-10-15T13:05:00Z' },
   { id: 'a3', name: 'Skrzynka AC/DC (Zabezpieczenia)', category: ProductCategory.ADDONS, quantity: 15, minQuantity: 5, price: 800, unit: 'szt.', warranty: '2 lata', dateAdded: '2023-10-15T13:05:00Z' },
+  // ADDONS FOR CALCULATOR
+  { id: 'ems1', name: 'System EMS (Zarządzanie Energią)', category: ProductCategory.ADDONS, quantity: 10, minQuantity: 2, price: 1500, unit: 'szt.', warranty: '2 lata', dateAdded: '2023-12-01T10:00:00Z' },
+  { id: 'ups1', name: 'System UPS (Zasilanie Awaryjne)', category: ProductCategory.ADDONS, quantity: 5, minQuantity: 1, price: 2500, unit: 'szt.', warranty: '2 lata', dateAdded: '2023-12-01T10:00:00Z' },
 ];
 
 export const MOCK_INSTALLATIONS: Installation[] = [

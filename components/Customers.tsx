@@ -1,6 +1,8 @@
+
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Customer, Installation, InstallationStatus, UploadedFile, Offer, UserRole, PaymentEntry, User } from '../types';
-import { Search, Phone, MapPin, Plus, Save, Zap, File as FileIcon, Camera, Image as ImageIcon, ClipboardList, User as UserIcon, FilePieChart, Banknote, History, Check, CheckCircle, Upload, Trash2, Users, FileText, Hammer, X, Shovel, ArrowLeft, Download, Maximize2, Filter, Briefcase, Sun, Wind, Home } from 'lucide-react';
+import { Search, Phone, MapPin, Plus, Save, Zap, File as FileIcon, Camera, Image as ImageIcon, ClipboardList, User as UserIcon, FilePieChart, Banknote, History, Check, CheckCircle, Upload, Trash2, Users, FileText, Hammer, X, Shovel, ArrowLeft, Download, Maximize2, Filter, Briefcase, Sun, Wind, Home, Calendar } from 'lucide-react';
 import { generateCustomerEmail } from '../services/geminiService';
 import { NotificationType } from './Notification';
 
@@ -12,6 +14,8 @@ interface CustomersProps {
   onUpdateInstallation: (installation: Installation) => void;
   onAddPayment: (installationId: string, payment: PaymentEntry) => void;
   onRemovePayment: (installationId: string, paymentId: string) => void;
+  onAddCommissionPayout?: (installationId: string, payment: PaymentEntry) => void;
+  onRemoveCommissionPayout?: (installationId: string, paymentId: string) => void;
   onShowNotification: (message: string, type?: NotificationType) => void;
   selectedCustomerId: string | null;
   setSelectedCustomerId: (id: string | null) => void;
@@ -22,6 +26,7 @@ interface CustomersProps {
 }
 
 type TabType = 'data' | 'finances' | 'audit' | 'files' | 'notes' | 'offers';
+type FinanceMode = 'CLIENT_PAYMENTS' | 'COMMISSION_PAYOUTS';
 
 export const Customers: React.FC<CustomersProps> = ({ 
   customers, 
@@ -31,6 +36,8 @@ export const Customers: React.FC<CustomersProps> = ({
   onUpdateInstallation,
   onAddPayment,
   onRemovePayment,
+  onAddCommissionPayout,
+  onRemoveCommissionPayout,
   onShowNotification,
   selectedCustomerId,
   setSelectedCustomerId,
@@ -43,6 +50,7 @@ export const Customers: React.FC<CustomersProps> = ({
   const [ownerFilter, setOwnerFilter] = useState<string>('ALL'); // 'ALL', 'MINE', 'TEAM', or specific userId
   const [editForm, setEditForm] = useState<Customer | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('data');
+  const [financeMode, setFinanceMode] = useState<FinanceMode>('CLIENT_PAYMENTS');
   
   // Modal State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -85,6 +93,7 @@ export const Customers: React.FC<CustomersProps> = ({
   
   const canEditStatus = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.OFFICE || currentUser.role === UserRole.SALES_MANAGER;
   const canEditFinances = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.OFFICE;
+  const canViewCommission = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.OFFICE || currentUser.role === UserRole.SALES_MANAGER || currentUser.role === UserRole.SALES;
   const canAcceptOffer = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.OFFICE || currentUser.role === UserRole.SALES || currentUser.role === UserRole.SALES_MANAGER;
   const canEditInstallationDetails = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.OFFICE || currentUser.role === UserRole.SALES_MANAGER;
   const canAssignTeam = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.OFFICE || currentUser.role === UserRole.SALES_MANAGER;
@@ -146,9 +155,8 @@ export const Customers: React.FC<CustomersProps> = ({
 
   // Helper to get owner name
   const getCustomerOwner = (repId?: string) => {
-    if (!repId) return 'Nieprzypisany';
-    const owner = users.find(u => u.id === repId);
-    return owner ? owner.name : 'Nieznany';
+    if (!repId) return null;
+    return users.find(u => u.id === repId) || null;
   };
 
   useEffect(() => {
@@ -244,10 +252,25 @@ export const Customers: React.FC<CustomersProps> = ({
       comment: newPaymentComment
     };
 
-    onAddPayment(selectedInstallation.id, payment);
+    if (financeMode === 'CLIENT_PAYMENTS') {
+        onAddPayment(selectedInstallation.id, payment);
+        onShowNotification("Dodano nową wpłatę");
+    } else if (financeMode === 'COMMISSION_PAYOUTS' && onAddCommissionPayout) {
+        onAddCommissionPayout(selectedInstallation.id, payment);
+        onShowNotification("Dodano wypłatę prowizji");
+    }
+    
     setNewPaymentAmount(0);
     setNewPaymentComment('');
-    onShowNotification("Dodano nową wpłatę");
+  };
+
+  const handlePaymentRemove = (paymentId: string) => {
+     if (!selectedInstallation) return;
+     if (financeMode === 'CLIENT_PAYMENTS') {
+        onRemovePayment(selectedInstallation.id, paymentId);
+     } else if (financeMode === 'COMMISSION_PAYOUTS' && onRemoveCommissionPayout) {
+        onRemoveCommissionPayout(selectedInstallation.id, paymentId);
+     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'doc' | 'audit') => {
@@ -343,6 +366,8 @@ export const Customers: React.FC<CustomersProps> = ({
         name: '', email: '', phone: '', street: '', zip: '', city: '', county: '', voivodeship: ''
      });
   };
+
+  const owner = editForm ? getCustomerOwner(editForm.repId) : null;
 
   return (
     <div className="flex h-full animate-fade-in bg-white shadow-sm border-r border-slate-200">
@@ -460,11 +485,20 @@ export const Customers: React.FC<CustomersProps> = ({
                         <MapPin className="w-3 h-3 mr-1" /> {editForm.address}
                      </p>
                      
-                     {/* Owner Attribution */}
+                     {/* Owner Attribution with Phone */}
                      <div className="flex items-center text-sm font-medium bg-slate-100 px-2 py-1 rounded-lg text-slate-600 border border-slate-200">
                         <Briefcase className="w-3 h-3 mr-1.5 text-blue-500" />
                         <span className="text-xs text-slate-400 mr-1 uppercase font-bold">Opiekun:</span>
-                        <span className="text-slate-800 font-bold">{getCustomerOwner(editForm.repId)}</span>
+                        <span className="text-slate-800 font-bold">{owner ? owner.name : 'Nieznany'}</span>
+                        {owner && owner.phone && (
+                          <a 
+                            href={`tel:${owner.phone}`} 
+                            className="ml-2 flex items-center bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-[10px] font-bold hover:bg-blue-200 transition-colors"
+                            title="Zadzwoń do opiekuna"
+                          >
+                             <Phone className="w-3 h-3 mr-1"/> {owner.phone}
+                          </a>
+                        )}
                      </div>
                   </div>
                 </div>
@@ -573,6 +607,17 @@ export const Customers: React.FC<CustomersProps> = ({
                                  </select>
                                </div>
 
+                               <div>
+                                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Data Montażu</label>
+                                  <input 
+                                    type="date" 
+                                    value={selectedInstallation.dateScheduled || ''}
+                                    disabled={!canEditInstallationDetails}
+                                    onChange={(e) => handleInstallationDetailChange('dateScheduled', e.target.value)}
+                                    className={`w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none ${!canEditInstallationDetails ? 'bg-slate-50 cursor-not-allowed' : 'bg-white'}`}
+                                  />
+                               </div>
+
                                {canAssignTeam && (
                                  <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Ekipa Montażowa</label>
@@ -650,7 +695,9 @@ export const Customers: React.FC<CustomersProps> = ({
                                 </div>
                                 <div>
                                    <p className="text-[10px] text-slate-400 uppercase font-bold">
-                                      {acceptedOffer.calculatorState.installationType === 'ROOF' ? 'Pokrycie' : 'Przekop'}
+                                      {acceptedOffer.calculatorState.installationType === 'ROOF' 
+                                         ? acceptedOffer.calculatorState.roofMaterial 
+                                         : `${acceptedOffer.calculatorState.trenchLength} mb`}
                                    </p>
                                    <p className="font-bold text-slate-800 text-sm">
                                       {acceptedOffer.calculatorState.installationType === 'ROOF' 
@@ -761,49 +808,76 @@ export const Customers: React.FC<CustomersProps> = ({
                            <p className="text-2xl font-bold text-red-600">{(selectedInstallation.price - selectedInstallation.paidAmount).toLocaleString()} PLN</p>
                         </div>
                      </div>
+                     
+                     {/* Toggle for Finance Mode */}
+                     {canViewCommission && (
+                        <div className="flex bg-slate-100 p-1 rounded-xl w-fit">
+                           <button 
+                             onClick={() => setFinanceMode('CLIENT_PAYMENTS')}
+                             className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${financeMode === 'CLIENT_PAYMENTS' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                           >
+                              Wpłaty Klienta
+                           </button>
+                           <button 
+                             onClick={() => setFinanceMode('COMMISSION_PAYOUTS')}
+                             className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${financeMode === 'COMMISSION_PAYOUTS' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                           >
+                              Wypłaty Prowizji
+                           </button>
+                        </div>
+                     )}
 
                      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                         <h3 className="font-bold text-slate-800 mb-4 flex items-center">
-                           <History className="w-5 h-5 mr-2 text-slate-500" /> Historia Wpłat
+                           <History className="w-5 h-5 mr-2 text-slate-500" /> 
+                           {financeMode === 'CLIENT_PAYMENTS' ? 'Historia Wpłat Klienta' : 'Historia Wypłat Prowizji'}
                         </h3>
-                        {selectedInstallation.paymentHistory && selectedInstallation.paymentHistory.length > 0 ? (
-                           <div className="overflow-x-auto">
-                              <table className="w-full text-left">
-                                 <thead className="text-xs text-slate-500 uppercase bg-slate-50">
-                                    <tr>
-                                       <th className="p-3">Data</th>
-                                       <th className="p-3">Kwota</th>
-                                       <th className="p-3">Opis</th>
-                                       <th className="p-3">Dodał</th>
-                                       {canEditFinances && <th className="p-3 text-right">Akcje</th>}
-                                    </tr>
-                                 </thead>
-                                 <tbody className="divide-y divide-slate-100">
-                                    {selectedInstallation.paymentHistory.map(payment => (
-                                       <tr key={payment.id}>
-                                          <td className="p-3 text-sm font-medium">{payment.date}</td>
-                                          <td className="p-3 text-sm font-bold text-green-600">{payment.amount.toLocaleString()} PLN</td>
-                                          <td className="p-3 text-sm text-slate-500">{payment.comment || '-'}</td>
-                                          <td className="p-3 text-sm text-slate-500">{payment.recordedBy}</td>
-                                          {canEditFinances && (
-                                             <td className="p-3 text-right">
-                                                <button onClick={() => onRemovePayment(selectedInstallation.id, payment.id)} className="text-red-400 hover:text-red-600">
-                                                   <Trash2 className="w-4 h-4" />
-                                                </button>
-                                             </td>
-                                          )}
+                        
+                        {/* Render Table Based on Mode */}
+                        {(() => {
+                           const history = financeMode === 'CLIENT_PAYMENTS' ? selectedInstallation.paymentHistory : selectedInstallation.commissionHistory;
+                           
+                           return history && history.length > 0 ? (
+                              <div className="overflow-x-auto">
+                                 <table className="w-full text-left">
+                                    <thead className="text-xs text-slate-500 uppercase bg-slate-50">
+                                       <tr>
+                                          <th className="p-3">Data</th>
+                                          <th className="p-3">Kwota</th>
+                                          <th className="p-3">Opis</th>
+                                          <th className="p-3">Dodał</th>
+                                          {canEditFinances && <th className="p-3 text-right">Akcje</th>}
                                        </tr>
-                                    ))}
-                                 </tbody>
-                              </table>
-                           </div>
-                        ) : (
-                           <div className="text-center py-6 text-slate-400 text-sm bg-slate-50 rounded-lg">Brak odnotowanych wpłat.</div>
-                        )}
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                       {history.map(payment => (
+                                          <tr key={payment.id}>
+                                             <td className="p-3 text-sm font-medium">{payment.date}</td>
+                                             <td className="p-3 text-sm font-bold text-green-600">{payment.amount.toLocaleString()} PLN</td>
+                                             <td className="p-3 text-sm text-slate-500">{payment.comment || '-'}</td>
+                                             <td className="p-3 text-sm text-slate-500">{payment.recordedBy}</td>
+                                             {canEditFinances && (
+                                                <td className="p-3 text-right">
+                                                   <button onClick={() => handlePaymentRemove(payment.id)} className="text-red-400 hover:text-red-600">
+                                                      <Trash2 className="w-4 h-4" />
+                                                   </button>
+                                                </td>
+                                             )}
+                                          </tr>
+                                       ))}
+                                    </tbody>
+                                 </table>
+                              </div>
+                           ) : (
+                              <div className="text-center py-6 text-slate-400 text-sm bg-slate-50 rounded-lg">Brak odnotowanych wpłat.</div>
+                           );
+                        })()}
 
                         {canEditFinances && (
                            <div className="mt-6 pt-6 border-t border-slate-100">
-                              <h4 className="font-bold text-sm text-slate-700 mb-3">Dodaj nową wpłatę</h4>
+                              <h4 className="font-bold text-sm text-slate-700 mb-3">
+                                 {financeMode === 'CLIENT_PAYMENTS' ? 'Dodaj wpłatę klienta' : 'Dodaj wypłatę prowizji'}
+                              </h4>
                               <div className="flex flex-col md:flex-row gap-3 items-end">
                                  <div className="w-full md:w-auto">
                                     <label className="block text-xs font-bold text-slate-400 mb-1">Data</label>

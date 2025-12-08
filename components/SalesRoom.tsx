@@ -130,7 +130,7 @@ export const SalesRoom: React.FC<SalesRoomProps> = ({
       const isHoliday = holidays.includes(mmdd);
 
       let bgClass = 'bg-white';
-      if (isHoliday) bgClass = 'bg-red-50';
+      if (isHoliday) bgClass = 'bg-red-100'; // Make holiday distinct
       else if (isWeekend) bgClass = 'bg-slate-50';
       if (isToday) bgClass = 'bg-blue-50/50 ring-1 ring-inset ring-blue-200';
 

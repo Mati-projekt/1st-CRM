@@ -1,8 +1,6 @@
-
-
 import React, { useState } from 'react';
-import { InventoryItem, ProductCategory } from '../types';
-import { AlertTriangle, Package, Brain, Edit2, X, Save, Zap, ShieldCheck, Plus, Battery, Filter, ExternalLink, Search, Link as LinkIcon, ArrowUpDown, Database } from 'lucide-react';
+import { InventoryItem, ProductCategory, User, UserRole } from '../types';
+import { AlertTriangle, Package, Brain, Edit2, X, Save, Plus, Filter, Search, ArrowUpDown, Database } from 'lucide-react';
 import { analyzeInventory } from '../services/geminiService';
 
 interface InventoryProps {
@@ -10,12 +8,13 @@ interface InventoryProps {
   onUpdateItem: (item: InventoryItem) => void;
   onAddItem: (item: InventoryItem) => void;
   onLoadSampleData?: () => void;
+  currentUser: User;
 }
 
 type SortField = 'name' | 'price' | 'quantity' | 'dateAdded';
 type SortOrder = 'asc' | 'desc';
 
-export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, onAddItem, onLoadSampleData }) => {
+export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, onAddItem, onLoadSampleData, currentUser }) => {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   
@@ -27,6 +26,9 @@ export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, o
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+
+  // Installers have restricted access
+  const isInstaller = currentUser.role === UserRole.INSTALLER;
 
   const handleAnalysis = async () => {
     setAnalyzing(true);
@@ -104,22 +106,25 @@ export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, o
             </h2>
             <p className="text-slate-500 text-xs md:text-sm mt-1">Zarządzaj produktami i monitoruj dostępność.</p>
          </div>
-         <div className="flex space-x-2 w-full md:w-auto">
-             {inventory.length === 0 && onLoadSampleData && (
+         {/* Hide actions for Installer */}
+         {!isInstaller && (
+           <div className="flex space-x-2 w-full md:w-auto">
+               {inventory.length === 0 && onLoadSampleData && (
+                 <button 
+                   onClick={onLoadSampleData}
+                   className="flex-1 md:flex-none bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-3 rounded-xl font-bold transition-colors flex items-center justify-center shadow-lg"
+                 >
+                   <Database className="w-5 h-5 mr-2" /> Wgraj Dane
+                 </button>
+               )}
                <button 
-                 onClick={onLoadSampleData}
-                 className="flex-1 md:flex-none bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-3 rounded-xl font-bold transition-colors flex items-center justify-center shadow-lg"
+                 onClick={handleAddNew}
+                 className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold transition-colors flex items-center justify-center shadow-lg shadow-blue-200"
                >
-                 <Database className="w-5 h-5 mr-2" /> Wgraj Przykładowe Produkty
+                 <Plus className="w-5 h-5 mr-2" /> Dodaj Produkt
                </button>
-             )}
-             <button 
-               onClick={handleAddNew}
-               className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold transition-colors flex items-center justify-center shadow-lg shadow-blue-200"
-             >
-               <Plus className="w-5 h-5 mr-2" /> Dodaj Produkt
-             </button>
-         </div>
+           </div>
+         )}
       </div>
 
       {/* Filters Stack */}
@@ -160,7 +165,7 @@ export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, o
                   <option value="dateAdded">Data dodania</option>
                   <option value="name">Nazwa</option>
                   <option value="quantity">Ilość</option>
-                  <option value="price">Cena</option>
+                  {!isInstaller && <option value="price">Cena</option>}
                </select>
             </div>
             <button 
@@ -181,37 +186,39 @@ export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, o
          </div>
       </div>
 
-      {/* AI Analysis Section */}
-      <div className="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
-         <div className="relative z-10">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
-              <h3 className="text-lg font-bold flex items-center">
-                 <Brain className="w-6 h-6 mr-2 text-violet-200" /> Inteligentna Analiza
-              </h3>
-              {analysis ? (
-                 <button onClick={() => setAnalysis(null)} className="text-white/70 hover:text-white"><X className="w-5 h-5" /></button>
-              ) : (
-                <button 
-                  onClick={handleAnalysis}
-                  disabled={analyzing}
-                  className="bg-white text-violet-700 px-4 py-2 rounded-lg font-bold text-sm hover:bg-violet-50 transition-colors shadow-lg disabled:opacity-70 w-full md:w-auto"
-                >
-                  {analyzing ? 'Analizuję...' : 'Uruchom AI'}
-                </button>
-              )}
-            </div>
-            
-            {analysis ? (
-              <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20 text-sm leading-relaxed animate-fade-in">
-                {analysis}
+      {/* AI Analysis Section (Hidden for Installers) */}
+      {!isInstaller && (
+        <div className="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
+           <div className="relative z-10">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
+                <h3 className="text-lg font-bold flex items-center">
+                   <Brain className="w-6 h-6 mr-2 text-violet-200" /> Inteligentna Analiza
+                </h3>
+                {analysis ? (
+                   <button onClick={() => setAnalysis(null)} className="text-white/70 hover:text-white"><X className="w-5 h-5" /></button>
+                ) : (
+                  <button 
+                    onClick={handleAnalysis}
+                    disabled={analyzing}
+                    className="bg-white text-violet-700 px-4 py-2 rounded-lg font-bold text-sm hover:bg-violet-50 transition-colors shadow-lg disabled:opacity-70 w-full md:w-auto"
+                  >
+                    {analyzing ? 'Analizuję...' : 'Uruchom AI'}
+                  </button>
+                )}
               </div>
-            ) : (
-              <p className="text-violet-100 text-sm max-w-xl">
-                 Wykorzystaj sztuczną inteligencję do wykrycia braków i rekomendacji zakupowych.
-              </p>
-            )}
-         </div>
-      </div>
+              
+              {analysis ? (
+                <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20 text-sm leading-relaxed animate-fade-in">
+                  {analysis}
+                </div>
+              ) : (
+                <p className="text-violet-100 text-sm max-w-xl">
+                   Wykorzystaj sztuczną inteligencję do wykrycia braków i rekomendacji zakupowych.
+                </p>
+              )}
+           </div>
+        </div>
+      )}
 
       {/* Inventory Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -220,12 +227,12 @@ export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, o
               <table className="w-full text-left border-collapse min-w-[800px]">
                  <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wider">
-                       <th className="p-4 font-bold">Produkt</th>
+                       <th className="p-4 font-bold w-1/3">Nazwa Produktu</th>
                        <th className="p-4 font-bold">Kategoria</th>
-                       <th className="p-4 font-bold text-right">Stan</th>
-                       <th className="p-4 font-bold text-right">Cena</th>
-                       <th className="p-4 font-bold">Info</th>
-                       <th className="p-4 font-bold text-right">Akcje</th>
+                       <th className="p-4 font-bold">Moc / Parametry</th>
+                       <th className="p-4 font-bold text-right">Ilość</th>
+                       {!isInstaller && <th className="p-4 font-bold text-right">Cena</th>}
+                       {!isInstaller && <th className="p-4 font-bold text-right">Akcje</th>}
                     </tr>
                  </thead>
                  <tbody className="divide-y divide-slate-100">
@@ -239,22 +246,36 @@ export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, o
                                {item.category}
                             </span>
                          </td>
+                         <td className="p-4 text-xs text-slate-600">
+                            {item.power && (
+                               <span className="font-bold bg-slate-100 px-2 py-1 rounded text-slate-700 mr-2">
+                                  {item.power} {item.category === ProductCategory.PANEL ? 'W' : 'kW'}
+                               </span>
+                            )}
+                            {item.capacity && (
+                               <span className="font-bold bg-green-50 px-2 py-1 rounded text-green-700">
+                                  {item.capacity} kWh
+                               </span>
+                            )}
+                            {!item.power && !item.capacity && <span className="text-slate-400">-</span>}
+                         </td>
                          <td className="p-4 text-right">
                             <span className={`font-bold text-sm ${item.quantity <= item.minQuantity ? 'text-red-600' : 'text-slate-700'}`}>
                               {item.quantity} {item.unit}
                             </span>
                          </td>
-                         <td className="p-4 text-right font-medium text-slate-700 text-sm">
-                            {item.price.toLocaleString()} zł
-                         </td>
-                         <td className="p-4 text-xs text-slate-600">
-                            {item.power && `${item.power} ${item.category === ProductCategory.PANEL ? 'W' : 'kW'}`}
-                         </td>
-                         <td className="p-4 text-right">
-                            <button onClick={() => handleEditClick(item)} className="p-2 text-blue-600 bg-blue-50 rounded-lg">
-                               <Edit2 className="w-4 h-4" />
-                            </button>
-                         </td>
+                         {!isInstaller && (
+                            <td className="p-4 text-right font-medium text-slate-700 text-sm">
+                               {item.price.toLocaleString()} zł
+                            </td>
+                         )}
+                         {!isInstaller && (
+                            <td className="p-4 text-right">
+                               <button onClick={() => handleEditClick(item)} className="p-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100">
+                                  <Edit2 className="w-4 h-4" />
+                               </button>
+                            </td>
+                         )}
                       </tr>
                     ))}
                  </tbody>
@@ -269,25 +290,61 @@ export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, o
          )}
       </div>
       
-      {/* Edit Modal (Keeping simplified for brevity, layout is responsive by default) */}
+      {/* Edit/Add Modal - Only accessible if not null (which is controlled by buttons hidden for installers) */}
       {editingItem && (
          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 space-y-4">
-               <h3 className="text-xl font-bold">Edycja Produktu</h3>
-               <input 
-                  type="text" 
-                  value={editingItem.name} 
-                  onChange={(e) => setEditingItem({...editingItem, name: e.target.value})}
-                  className="w-full p-3 border rounded-xl"
-                  placeholder="Nazwa"
-               />
-               <div className="grid grid-cols-2 gap-4">
-                  <input type="number" value={editingItem.price} onChange={(e) => setEditingItem({...editingItem, price: Number(e.target.value)})} className="w-full p-3 border rounded-xl" placeholder="Cena" />
-                  <input type="number" value={editingItem.quantity} onChange={(e) => setEditingItem({...editingItem, quantity: Number(e.target.value)})} className="w-full p-3 border rounded-xl" placeholder="Ilość" />
+               <h3 className="text-xl font-bold">{editingItem.id ? 'Edycja Produktu' : 'Dodaj Produkt'}</h3>
+               
+               <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nazwa</label>
+                  <input 
+                     type="text" 
+                     value={editingItem.name} 
+                     onChange={(e) => setEditingItem({...editingItem, name: e.target.value})}
+                     className="w-full p-3 border rounded-xl"
+                     placeholder="np. Panel Jinko 440W"
+                  />
                </div>
+
+               <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Kategoria</label>
+                  <select 
+                     value={editingItem.category} 
+                     onChange={(e) => setEditingItem({...editingItem, category: e.target.value as ProductCategory})}
+                     className="w-full p-3 border rounded-xl bg-white"
+                  >
+                     {Object.values(ProductCategory).map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                     ))}
+                  </select>
+               </div>
+               
+               <div className="grid grid-cols-2 gap-4">
+                  <div>
+                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cena (PLN)</label>
+                     <input type="number" value={editingItem.price} onChange={(e) => setEditingItem({...editingItem, price: Number(e.target.value)})} className="w-full p-3 border rounded-xl" placeholder="0.00" />
+                  </div>
+                  <div>
+                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Ilość</label>
+                     <input type="number" value={editingItem.quantity} onChange={(e) => setEditingItem({...editingItem, quantity: Number(e.target.value)})} className="w-full p-3 border rounded-xl" placeholder="0" />
+                  </div>
+               </div>
+
+               <div className="grid grid-cols-2 gap-4">
+                  <div>
+                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Moc (W/kW)</label>
+                     <input type="number" value={editingItem.power || ''} onChange={(e) => setEditingItem({...editingItem, power: Number(e.target.value)})} className="w-full p-3 border rounded-xl" placeholder="Opcjonalne" />
+                  </div>
+                  <div>
+                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Pojemność (kWh)</label>
+                     <input type="number" value={editingItem.capacity || ''} onChange={(e) => setEditingItem({...editingItem, capacity: Number(e.target.value)})} className="w-full p-3 border rounded-xl" placeholder="Opcjonalne" />
+                  </div>
+               </div>
+
                <div className="flex justify-end gap-2 pt-4">
-                  <button onClick={() => setEditingItem(null)} className="px-4 py-2 text-slate-500">Anuluj</button>
-                  <button onClick={handleSave} className="px-6 py-2 bg-blue-600 text-white rounded-xl font-bold">Zapisz</button>
+                  <button onClick={() => setEditingItem(null)} className="px-4 py-2 text-slate-500 font-bold hover:bg-slate-100 rounded-lg">Anuluj</button>
+                  <button onClick={handleSave} className="px-6 py-2 bg-blue-600 text-white rounded-xl font-bold shadow-md hover:bg-blue-700">Zapisz</button>
                </div>
             </div>
          </div>

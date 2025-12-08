@@ -27,12 +27,15 @@ export enum UserRole {
   OFFICE = 'BIURO'
 }
 
+export type AppTool = 'MENU' | 'PRESENTATION' | 'CALC_PV' | 'CALC_ME' | 'CALC_PV_WIND' | 'CALC_HEAT';
+
 export interface SalesSettings {
   location?: string;
   marginType?: 'PERCENT' | 'FIXED';
   marginPV: number;      // Fixed amount in PLN or Percent
   marginHeat: number;    // Fixed amount in PLN or Percent
   marginStorage: number; // Fixed amount in PLN or Percent
+  showRoiChart?: boolean; // Toggle for ROI Chart visibility
 }
 
 export interface SystemSettings {
@@ -45,10 +48,14 @@ export interface User {
   name: string;
   role: UserRole;
   email: string;
+  phone?: string; // Added phone to User interface
   salesSettings?: SalesSettings;
   salesCategory?: '1' | '2';
   managerId?: string;
+  commissionSplit?: number; // % of margin paid to user
 }
+
+export type TaskType = 'CALL' | 'MEETING' | 'TODO';
 
 export interface Task {
   id: string;
@@ -57,6 +64,12 @@ export interface Task {
   completed: boolean;
   assignedTo: string;
   createdBy: string;
+  // Extended fields
+  type?: TaskType;
+  description?: string;
+  customerName?: string;
+  phone?: string;
+  address?: string;
 }
 
 export interface Message {
@@ -98,36 +111,40 @@ export interface CalculatorState {
   };
 
   // Step 2: Energy
+  calcMode: 'BILL_AMOUNT' | 'ANNUAL_KWH'; // New field for switching modes
   tariff: TariffType;
-  phases: 1 | 3; // New: 1-phase or 3-phase
-  consumption: number;
+  phases: 1 | 3; 
+  consumption: number; // Calculated or Entered manually depending on mode
   connectionPower: number;
   pricePerKwh: number;
   priceOffPeak?: number;
   percentOffPeak?: number;
   
+  currentBillAmount: number;
+  billingPeriod: '1' | '2' | '3' | '6' | '12'; // Months
+
   // Step 3: Core Components
   panelId: string;
   panelCount: number;
   inverterId: string;
   storageId: string;
   storageCount: number;
-  connectionPowerWarningAccepted: boolean; // New: User explicit acceptance
+  connectionPowerWarningAccepted: boolean; 
 
   // Step 4: Mounting & Addons
-  installationType: InstallationType; // New
-  roofSlope?: RoofSlope; // New
-  roofMaterial?: RoofMaterial; // New
-  trenchLength: number; // Only for Ground
+  installationType: InstallationType; 
+  roofSlope?: RoofSlope; 
+  roofMaterial?: RoofMaterial; 
+  trenchLength: number; 
   mountingSystemId: string;
-  orientation: Orientation; // New
+  orientation: Orientation; 
   
   hasEMS: boolean;
   hasUPS: boolean;
 
   // Step 5: Financials
-  subsidyMojPradPV: boolean; // Changed: Specific for PV 
-  subsidyMojPradStorage: boolean; // Changed: Specific for Storage
+  subsidyMojPradPV: boolean; 
+  subsidyMojPradStorage: boolean; 
   subsidyCzystePowietrze: boolean;
   taxRelief: 'NONE' | '12' | '32'; 
 }
@@ -140,7 +157,7 @@ export interface Offer {
   calculatorState: CalculatorState;
   status?: 'DRAFT' | 'ACCEPTED';
   appliedMarkup?: number;
-  personalMarkup?: number; // New: Track personal margin
+  personalMarkup?: number; 
 }
 
 export interface Customer {
@@ -167,7 +184,7 @@ export interface InventoryItem {
   warranty: string;
   power?: number;   // kW for Inverters/Storage, W for Panels
   capacity?: number; // kWh
-  phases?: 1 | 3; // New: For Inverters
+  phases?: 1 | 3; 
   url?: string;
   dateAdded?: string;
 }
@@ -201,7 +218,15 @@ export interface Installation {
   paidAmount: number;
   paymentHistory?: PaymentEntry[];
   
-  commissionValue?: number; // New field to track solidified commission
+  commissionValue?: number;
+  commissionHistory?: PaymentEntry[]; // History of commission payouts
+
+  equipmentStatus?: {
+    panelsPicked: boolean;
+    inverterPicked: boolean;
+    storagePicked: boolean;
+    mountingPicked: boolean;
+  };
 }
 
 export type ViewState = 'DASHBOARD' | 'CUSTOMERS' | 'INSTALLATIONS' | 'INVENTORY' | 'APPLICATIONS' | 'EMPLOYEES';

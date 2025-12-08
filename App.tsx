@@ -9,9 +9,9 @@ import { Applications } from './components/Applications';
 import { Employees } from './components/Employees';
 import { Login } from './components/Login';
 import { Notification, NotificationType } from './components/Notification';
-import { Customer, Installation, InventoryItem, ViewState, Offer, CalculatorState, InstallationStatus, UserRole, PaymentEntry, Task, Message, SalesSettings, ProductCategory, User, SystemSettings } from './types';
+import { Customer, Installation, InventoryItem, ViewState, Offer, CalculatorState, InstallationStatus, UserRole, PaymentEntry, Task, Message, SalesSettings, ProductCategory, User, SystemSettings, AppTool } from './types';
 import { supabase } from './services/supabaseClient';
-import { Menu, Loader2 } from 'lucide-react';
+import { Menu, Loader2, ArrowLeft } from 'lucide-react';
 import { MOCK_INVENTORY } from './constants';
 
 // Safe ID generator fallback
@@ -22,12 +22,20 @@ const generateId = () => {
   return Date.now().toString(36) + Math.random().toString(36).substr(2);
 };
 
+interface NavigationState {
+  view: ViewState;
+  customerId: string | null;
+  tool: AppTool;
+}
+
 const App: React.FC = () => {
   // Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false); // New state to prevent loop
 
   const [currentView, setCurrentView] = useState<ViewState>('DASHBOARD');
+  const [currentAppTool, setCurrentAppTool] = useState<AppTool>('MENU');
   
   // Mobile Sidebar State
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -49,6 +57,9 @@ const App: React.FC = () => {
   // Selection State
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
 
+  // History State
+  const [history, setHistory] = useState<NavigationState[]>([]);
+
   // Edit Offer State
   const [offerToEdit, setOfferToEdit] = useState<CalculatorState | null>(null);
 
@@ -58,6 +69,63 @@ const App: React.FC = () => {
   const showNotification = (message: string, type: NotificationType = 'success') => {
     setNotification({ message, type });
   };
+
+  // --- NAVIGATION LOGIC ---
+
+  const handleNavigation = (updates: {view?: ViewState, customerId?: string | null, tool?: AppTool}) => {
+    // Save current state to history
+    setHistory(prev => [...prev, {
+      view: currentView,
+      customerId: selectedCustomerId,
+      tool: currentAppTool
+    }]);
+
+    // Apply updates
+    if (updates.view !== undefined) setCurrentView(updates.view);
+    
+    // Logic: If explicitly navigating to a customer, set it. 
+    // If just changing main view (e.g. Sidebar click), reset customer selection unless specified otherwise.
+    // However, keeping strict control is safer.
+    if (updates.customerId !== undefined) {
+       setSelectedCustomerId(updates.customerId);
+    } else if (updates.view !== undefined && updates.view !== 'CUSTOMERS' && updates.view !== 'INSTALLATIONS') {
+       // Reset selection when leaving customer context, unless specifically preserving it?
+       // Let's rely on explicit calls. Sidebar calls reset.
+    }
+
+    if (updates.tool !== undefined) setCurrentAppTool(updates.tool);
+  };
+
+  const handleBack = () => {
+    if (history.length === 0) return;
+    const previous = history[history.length - 1];
+    const newHistory = history.slice(0, -1);
+    
+    setHistory(newHistory);
+    setCurrentView(previous.view);
+    setSelectedCustomerId(previous.customerId);
+    setCurrentAppTool(previous.tool);
+  };
+
+  const handleSidebarNavigation = (view: ViewState) => {
+    // When clicking sidebar, we generally want to reset sub-states (customer selection, tools)
+    // UNLESS we are already on that view? No, sidebar usually resets navigation stack perception.
+    handleNavigation({
+      view, 
+      customerId: null,
+      tool: 'MENU'
+    });
+    setIsSidebarOpen(false);
+  };
+
+  const handleCustomerSelection = (id: string | null) => {
+    handleNavigation({ customerId: id });
+  };
+  
+  const handleAppToolChange = (tool: AppTool) => {
+    handleNavigation({ tool });
+  };
+
 
   // --- MAPPERS (CRITICAL FOR DB SYNC - SNAKE_CASE ONLY FOR WRITES) ---
   
@@ -107,7 +175,9 @@ const App: React.FC = () => {
     price: i.price || 0,
     paidAmount: i.paid_amount || i.paidAmount || 0,
     paymentHistory: i.payment_history || i.paymentHistory || [],
-    commissionValue: i.commission_value || i.commissionValue || 0
+    commissionValue: i.commission_value || i.commissionValue || 0,
+    commissionHistory: i.commission_history || [],
+    equipmentStatus: i.equipment_status || i.equipmentStatus || { panelsPicked: false, inverterPicked: false, storagePicked: false, mountingPicked: false }
   });
 
   const mapInstallationToDB = (i: Partial<Installation>): any => {
@@ -131,6 +201,8 @@ const App: React.FC = () => {
     if (i.paidAmount !== undefined) db.paid_amount = i.paidAmount;
     if (i.paymentHistory !== undefined) db.payment_history = i.paymentHistory;
     if (i.commissionValue !== undefined) db.commission_value = i.commissionValue;
+    if (i.commissionHistory !== undefined) db.commission_history = i.commissionHistory;
+    if (i.equipmentStatus !== undefined) db.equipment_status = i.equipmentStatus;
     return db;
   };
 
@@ -176,7 +248,23 @@ const App: React.FC = () => {
 
       // Fetch Tasks
       const { data: taskData } = await supabase.from('tasks').select('*');
-      if (taskData) setTasks(taskData as Task[]);
+      if (taskData) {
+         const mappedTasks = taskData.map((t: any) => ({
+             id: t.id,
+             title: t.title,
+             date: t.date,
+             completed: t.completed,
+             assignedTo: t.assigned_to || t.assignedTo,
+             createdBy: t.created_by || t.createdBy,
+             // Map new extended fields
+             type: t.type,
+             description: t.description,
+             customerName: t.customer_name || t.customerName,
+             phone: t.phone,
+             address: t.address
+         }));
+         setTasks(mappedTasks as Task[]);
+      }
 
       // Fetch Messages
       const { data: msgData } = await supabase.from('messages').select('*');
@@ -189,10 +277,12 @@ const App: React.FC = () => {
           id: u.id,
           name: u.name,
           email: u.email,
+          phone: u.phone, // Map phone
           role: u.role as UserRole,
           salesCategory: u.sales_category || u.salesCategory,
           managerId: u.manager_id || u.managerId,
-          salesSettings: u.sales_settings || u.salesSettings
+          salesSettings: u.sales_settings || u.salesSettings,
+          commissionSplit: u.commission_split ?? 0 // Default 0
         }));
         setAllUsers(mappedUsers);
 
@@ -235,6 +325,10 @@ const App: React.FC = () => {
     const handleVisibilityChange = async () => {
       // SILENT REVALIDATION: Do not set loading=true on visibility change.
       // This prevents the "spinning wheel" on mobile when resuming the app.
+      
+      // CRITICAL: Do not re-check session if user explicitly triggered logout
+      if (isLoggingOut) return;
+
       if (document.visibilityState === 'visible') {
         const { data: { session }, error } = await supabase.auth.getSession();
         
@@ -265,7 +359,7 @@ const App: React.FC = () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('online', handleOnline);
     };
-  }, [currentUser]);
+  }, [currentUser, isLoggingOut]);
 
 
   // --- AUTH LISTENER ---
@@ -293,7 +387,9 @@ const App: React.FC = () => {
                   sales_category: crmProfile.sales_category,
                   manager_id: crmProfile.manager_id,
                   sales_settings: crmProfile.sales_settings,
-                  name: crmProfile.name
+                  name: crmProfile.name,
+                  commission_split: crmProfile.commission_split,
+                  phone: crmProfile.phone
               }).eq('id', authId);
 
               // Update foreign keys
@@ -316,10 +412,12 @@ const App: React.FC = () => {
                 id: authId,
                 name: crmProfile.name,
                 email: sessionUser.email,
+                phone: crmProfile.phone,
                 role: crmProfile.role as UserRole, 
                 salesCategory: (crmProfile.sales_category as '1' | '2') || undefined,
                 managerId: crmProfile.manager_id,
-                salesSettings: crmProfile.sales_settings
+                salesSettings: crmProfile.sales_settings,
+                commissionSplit: crmProfile.commission_split || 0
               };
 
            } else {
@@ -330,10 +428,12 @@ const App: React.FC = () => {
                     id: authId,
                     name: crmProfile.name,
                     email: crmProfile.email,
+                    phone: crmProfile.phone,
                     role: crmProfile.role as UserRole,
                     salesCategory: (crmProfile.sales_category as '1' | '2') || undefined,
                     managerId: crmProfile.manager_id,
-                    salesSettings: crmProfile.sales_settings
+                    salesSettings: crmProfile.sales_settings,
+                    commissionSplit: crmProfile.commission_split || 0
                  };
               }
            }
@@ -344,10 +444,12 @@ const App: React.FC = () => {
             id: authProfile.id, 
             name: authProfile.name,
             email: authProfile.email,
+            phone: authProfile.phone,
             role: authProfile.role as UserRole,
             salesCategory: (authProfile.sales_category as '1' | '2') || undefined,
             managerId: authProfile.manager_id,
-            salesSettings: authProfile.sales_settings
+            salesSettings: authProfile.sales_settings,
+            commissionSplit: authProfile.commission_split || 0
           };
         } 
         
@@ -357,7 +459,8 @@ const App: React.FC = () => {
           name: sessionUser.user_metadata?.name || sessionUser.email?.split('@')[0] || 'Użytkownik',
           email: sessionUser.email || '',
           role: UserRole.SALES, 
-          sales_category: '1'
+          sales_category: '1',
+          commission_split: 0
         };
 
         const { error: insertError } = await supabase.from('profiles').insert([newProfile]);
@@ -368,7 +471,8 @@ const App: React.FC = () => {
             name: newProfile.name,
             email: newProfile.email,
             role: newProfile.role,
-            salesCategory: '1'
+            salesCategory: '1',
+            commissionSplit: 0
           };
         }
       } catch (err) {
@@ -389,7 +493,7 @@ const App: React.FC = () => {
        
        const { data: { session } } = await supabase.auth.getSession();
        
-       if (session?.user) {
+       if (session?.user && !isLoggingOut) {
           const user = await syncProfile(session.user);
           if (mounted) {
              if (user) setCurrentUser(user);
@@ -403,6 +507,10 @@ const App: React.FC = () => {
           if (event === 'SIGNED_IN') {
              // Only show loader if we are actually switching users or logging in from scratch.
              // If we are just refreshing a token for the SAME user, keep UI active (Silent Refresh).
+             
+             // Reset logout state on successful login
+             setIsLoggingOut(false);
+
              if (!currentUser || (session?.user && currentUser.id !== session.user.id)) {
                  setLoading(true);
                  const user = await syncProfile(session?.user);
@@ -436,6 +544,8 @@ const App: React.FC = () => {
       fetchData();
       if (currentUser.role === UserRole.INSTALLER) setCurrentView('INSTALLATIONS');
       else setCurrentView('DASHBOARD');
+      // Reset history on user switch/login
+      setHistory([]);
     }
   }, [currentUser]);
 
@@ -443,9 +553,11 @@ const App: React.FC = () => {
   const handleLogout = async () => {
     try {
       setLoading(true);
+      setIsLoggingOut(true); // Flag to prevent auto-reconnect loops
       await supabase.auth.signOut();
       setCurrentUser(null);
       setLoading(false);
+      // We do NOT set isLoggingOut(false) here, it will be reset on next valid login
     } catch (e) {
       console.error("Logout error", e);
       setCurrentUser(null);
@@ -685,7 +797,13 @@ const App: React.FC = () => {
       // 3. Rollback on Error
       setInstallations(previousInstallations);
       console.error("Update error:", error);
-      showNotification(`Błąd aktualizacji: ${error.message}`, 'error');
+      
+      // Check for missing column error code (PGRST204 = missing column/violation)
+      if (error.code === 'PGRST204' || (error.message && error.message.includes('equipment_status'))) {
+         showNotification(`BŁĄD KRYTYCZNY: Brakuje kolumny 'equipment_status' w bazie. Uruchom kod SQL!`, 'error');
+      } else {
+         showNotification(`Błąd aktualizacji: ${error.message}`, 'error');
+      }
     }
   };
 
@@ -723,13 +841,118 @@ const App: React.FC = () => {
      }
   };
 
-  const handleAddTask = async (task: Task) => {
-    const { id, ...taskData } = task; 
-    const { data, error } = await supabase.from('tasks').insert([taskData]).select().single();
-    if (data && !error) {
-      setTasks(prev => [...prev, data as Task]);
-      showNotification('Dodano nowe zadanie');
+  const handleAddCommissionPayout = async (installationId: string, payment: PaymentEntry) => {
+    const inst = installations.find(i => i.id === installationId);
+    if (inst) {
+      const newHistory = [...(inst.commissionHistory || []), payment];
+      
+      const { error } = await supabase.from('installations').update({ 
+         commission_history: newHistory
+      }).eq('id', installationId);
+
+      if (!error) {
+         setInstallations(prev => prev.map(i => i.id === installationId ? { ...i, commissionHistory: newHistory } : i));
+         showNotification("Dodano wypłatę prowizji", 'info');
+      }
     }
+  };
+
+  const handleRemoveCommissionPayout = async (installationId: string, paymentId: string) => {
+     const inst = installations.find(i => i.id === installationId);
+     if (inst) {
+       const newHistory = (inst.commissionHistory || []).filter(p => p.id !== paymentId);
+       
+       const { error } = await supabase.from('installations').update({ 
+         commission_history: newHistory
+       }).eq('id', installationId);
+
+       if (!error) {
+         setInstallations(prev => prev.map(i => i.id === installationId ? { ...i, commissionHistory: newHistory } : i));
+         showNotification("Cofnięto wypłatę prowizji", 'info');
+       }
+     }
+  };
+
+  const handleAddTask = async (task: Task) => {
+    // Construct database object with correct snake_case keys
+    // OMIT 'id' so Postgres generates a valid UUID v4 (fixing invalid input syntax error)
+    const dbTask = {
+        // id: task.id, // REMOVED to avoid sending timestamp string as uuid
+        title: task.title,
+        date: task.date,
+        completed: task.completed,
+        assigned_to: task.assignedTo,
+        created_by: task.createdBy,
+        // New fields mapped to snake_case
+        customer_name: task.customerName,
+        phone: task.phone,
+        address: task.address,
+        type: task.type,
+        description: task.description
+    };
+    
+    const { data, error } = await supabase.from('tasks').insert([dbTask]).select().single();
+    
+    if (data && !error) {
+      // Map back
+      const mappedTask: Task = {
+          id: data.id,
+          title: data.title,
+          date: data.date,
+          completed: data.completed,
+          assignedTo: data.assigned_to,
+          createdBy: data.created_by,
+          customerName: data.customer_name,
+          phone: data.phone,
+          address: data.address,
+          type: data.type,
+          description: data.description
+      };
+      setTasks(prev => [...prev, mappedTask]);
+      showNotification('Dodano nowe zadanie');
+    } else {
+        console.error("Add Task Error:", error);
+        if (error && (error.code === 'PGRST204' || error.message.includes('column'))) {
+             showNotification('BŁĄD: Brakuje kolumn (address, phone...) w tabeli tasks. Uruchom kod SQL!', 'error');
+        } else {
+             showNotification('Błąd dodawania zadania', 'error');
+        }
+    }
+  };
+
+  const handleUpdateTaskDetails = async (updatedTask: Task) => {
+    const dbTask = {
+      title: updatedTask.title,
+      date: updatedTask.date,
+      completed: updatedTask.completed,
+      assigned_to: updatedTask.assignedTo,
+      customer_name: updatedTask.customerName,
+      phone: updatedTask.phone,
+      address: updatedTask.address,
+      type: updatedTask.type,
+      description: updatedTask.description
+    };
+
+    const { error } = await supabase.from('tasks').update(dbTask).eq('id', updatedTask.id);
+    
+    if (!error) {
+       setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
+       showNotification("Zaktualizowano zadanie");
+    } else {
+       console.error("Error updating task:", error);
+       showNotification("Błąd aktualizacji zadania", 'error');
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+     const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+     if (!error) {
+        setTasks(prev => prev.filter(t => t.id !== taskId));
+        showNotification("Usunięto zadanie");
+     } else {
+        console.error("Error deleting task:", error);
+        showNotification("Błąd usuwania zadania", 'error');
+     }
   };
 
   const handleUpdateTask = async (taskId: string, completed: boolean) => {
@@ -790,16 +1013,20 @@ const App: React.FC = () => {
 
     // 2. Check permissions - Admin/Office always has access
     if (currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.OFFICE) {
-       setSelectedCustomerId(customerId);
-       setCurrentView('CUSTOMERS');
+       handleNavigation({
+         view: 'CUSTOMERS',
+         customerId: customerId
+       });
        return;
     }
 
     // 3. Check access for others
     const hasAccess = filteredCustomers.some(c => c.id === customerId);
     if (hasAccess) {
-      setSelectedCustomerId(customerId);
-      setCurrentView('CUSTOMERS');
+      handleNavigation({
+        view: 'CUSTOMERS',
+        customerId: customerId
+      });
     } else {
       showNotification('Brak dostępu do danych tego klienta', 'error');
     }
@@ -857,7 +1084,10 @@ const App: React.FC = () => {
 
   const handleEditOffer = (offer: Offer) => {
     setOfferToEdit(offer.calculatorState);
-    setCurrentView('APPLICATIONS');
+    handleNavigation({
+      view: 'APPLICATIONS',
+      tool: 'CALC_PV'
+    });
   };
 
   const handleAcceptOffer = async (customerId: string, offerId: string): Promise<void> => {
@@ -876,6 +1106,10 @@ const App: React.FC = () => {
     const storageSizeKw = storageItem && storageItem.capacity ? storageItem.capacity * calculatorState.storageCount : 0;
 
     const existingInst = installations.find(i => i.customerId === customerId);
+    
+    // Set dateScheduled to TODAY to ensure it registers in current dashboard period
+    const todayStr = new Date().toISOString().split('T')[0];
+
     const updateData: Partial<Installation> = {
       price: finalPrice,
       systemSizeKw,
@@ -887,7 +1121,8 @@ const App: React.FC = () => {
       mountingSystem: mountingItem?.name || '',
       trenchLength: calculatorState.trenchLength,
       notes: existingInst ? (existingInst.notes || '') + '\n' + offerNote : offerNote,
-      commissionValue: offer.personalMarkup || 0
+      commissionValue: offer.personalMarkup || 0,
+      dateScheduled: todayStr // Force update dateScheduled to today on acceptance
     };
     
     let newOrUpdatedInst: Installation | null = null;
@@ -931,7 +1166,9 @@ const App: React.FC = () => {
       role: user.role,
       sales_category: user.salesCategory || null,
       manager_id: user.managerId || null,
-      sales_settings: user.salesSettings || null
+      sales_settings: user.salesSettings || null,
+      commission_split: user.commissionSplit || 0,
+      phone: user.phone || null
     };
 
     const { data: profileData, error } = await supabase.from('profiles').insert([dbProfile]).select().single();
@@ -962,14 +1199,24 @@ const App: React.FC = () => {
       role: updatedUser.role,
       sales_category: updatedUser.salesCategory || null,
       manager_id: updatedUser.managerId || null,
-      sales_settings: updatedUser.salesSettings || null
+      sales_settings: updatedUser.salesSettings || null,
+      commission_split: updatedUser.commissionSplit || 0,
+      phone: updatedUser.phone || null
     };
 
     // Use upsert to handle both updates and "ensure existence"
     const { error } = await supabase.from('profiles').upsert(dbProfile);
     
     if (!error) {
+       // 1. Update list for Employees view
        setAllUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+       
+       // 2. IMPORTANT: Update currentUser if the logged-in user modified their own profile
+       // This ensures the Dashboard calculation uses the new commission split immediately
+       if (currentUser && currentUser.id === updatedUser.id) {
+         setCurrentUser(prev => prev ? { ...prev, ...updatedUser } : updatedUser);
+       }
+
        showNotification("Zaktualizowano dane pracownika");
     } else {
        console.error("Error updating user:", error);
@@ -997,13 +1244,17 @@ const App: React.FC = () => {
           installations={filteredInstallations} 
           inventory={inventory} 
           customers={filteredCustomers} 
-          onChangeView={setCurrentView} 
+          onChangeView={handleSidebarNavigation} 
           currentUser={currentUser}
           onAddTask={handleAddTask}
           tasks={tasks}
           messages={messages}
           onSendMessage={handleSendMessage}
           onUpdateSettings={handleUpdateSettings}
+          onNavigateToCustomer={handleNavigateToCustomer} // Pass Navigation Function
+          onUpdateTaskDetails={handleUpdateTaskDetails}
+          onDeleteTask={handleDeleteTask}
+          users={allUsers} // Pass users for delegation
         />;
       case 'CUSTOMERS':
         return <Customers 
@@ -1014,9 +1265,11 @@ const App: React.FC = () => {
           onUpdateInstallation={handleUpdateInstallation}
           onAddPayment={handleAddPayment}
           onRemovePayment={handleRemovePayment}
+          onAddCommissionPayout={handleAddCommissionPayout}
+          onRemoveCommissionPayout={handleRemoveCommissionPayout}
           onShowNotification={showNotification}
           selectedCustomerId={selectedCustomerId}
-          setSelectedCustomerId={setSelectedCustomerId}
+          setSelectedCustomerId={handleCustomerSelection}
           onEditOffer={handleEditOffer}
           onAcceptOffer={handleAcceptOffer}
           onAddCustomer={handleAddCustomer}
@@ -1025,7 +1278,7 @@ const App: React.FC = () => {
       case 'INSTALLATIONS':
         return <Installations installations={filteredInstallations} customers={customers} users={allUsers} onNavigateToCustomer={handleNavigateToCustomer} onUpdateInstallation={handleUpdateInstallation} currentUserRole={currentUser.role} />;
       case 'INVENTORY':
-        return <Inventory inventory={inventory} onUpdateItem={handleUpdateInventoryItem} onAddItem={handleAddItem} onLoadSampleData={handleLoadSampleInventory} />;
+        return <Inventory inventory={inventory} onUpdateItem={handleUpdateInventoryItem} onAddItem={handleAddItem} onLoadSampleData={handleLoadSampleInventory} currentUser={currentUser} />;
       case 'APPLICATIONS':
         return <Applications 
           customers={filteredCustomers} 
@@ -1035,6 +1288,8 @@ const App: React.FC = () => {
           clearInitialState={() => setOfferToEdit(null)}
           currentUser={currentUser}
           systemSettings={systemSettings}
+          currentTool={currentAppTool}
+          onChangeTool={handleAppToolChange}
         />;
       case 'EMPLOYEES':
         return <Employees 
@@ -1058,7 +1313,7 @@ const App: React.FC = () => {
       {isSidebarOpen && <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setIsSidebarOpen(false)} />}
       <Sidebar 
         currentView={currentView} 
-        onChangeView={(view) => { setCurrentView(view); setIsSidebarOpen(false); }} 
+        onChangeView={handleSidebarNavigation} 
         currentUser={currentUser}
         onLogout={handleLogout}
         isOpen={isSidebarOpen}
@@ -1068,6 +1323,18 @@ const App: React.FC = () => {
         <header className="bg-white border-b border-slate-200 h-16 flex items-center px-4 md:px-8 shadow-sm justify-between z-10 shrink-0">
            <div className="flex items-center">
              <button onClick={() => setIsSidebarOpen(true)} className="mr-4 md:hidden text-slate-500 hover:text-slate-800"><Menu className="w-6 h-6" /></button>
+             
+             {/* GLOBAL BACK BUTTON */}
+             {history.length > 0 && (
+               <button 
+                  onClick={handleBack}
+                  className="mr-3 p-2 rounded-full hover:bg-slate-100 text-slate-600 transition-colors flex items-center justify-center border border-transparent hover:border-slate-200"
+                  title="Wróć"
+               >
+                  <ArrowLeft className="w-5 h-5 md:w-6 md:h-6" />
+               </button>
+             )}
+
              <h1 className="text-lg md:text-xl font-bold text-slate-800 truncate">
                {currentView === 'EMPLOYEES' ? 'Pracownicy' : 'Panel'}
              </h1>

@@ -1,6 +1,8 @@
+
+
 import React, { useState, useMemo, useEffect } from 'react';
-import { ArrowLeft, Presentation, Battery, Wind, Flame, Zap, Sun, User, CheckCircle, ChevronRight, BarChart3, Upload, Plus, Home, Hammer, Shovel, ShieldCheck, Banknote, Save, AlertTriangle, ArrowUpRight, CheckSquare, Coins, Calculator, Percent, ChevronDown, ChevronUp, CalendarClock } from 'lucide-react';
-import { Customer, InventoryItem, ProductCategory, CalculatorState, Offer, TariffType, User as AppUser, SystemSettings } from '../types';
+import { ArrowLeft, Presentation, Battery, Wind, Flame, Zap, Sun, User, CheckCircle, ChevronRight, BarChart3, Upload, Plus, Home, Hammer, Shovel, ShieldCheck, Banknote, Save, AlertTriangle, ArrowUpRight, CheckSquare, Coins, Calculator, Percent, ChevronDown, ChevronUp, CalendarClock, Server, Box, Cpu, FileText, Lightbulb, TrendingUp } from 'lucide-react';
+import { Customer, InventoryItem, ProductCategory, CalculatorState, Offer, TariffType, User as AppUser, SystemSettings, AppTool } from '../types';
 
 interface ApplicationsProps {
   customers: Customer[];
@@ -10,9 +12,47 @@ interface ApplicationsProps {
   clearInitialState: () => void;
   currentUser: AppUser;
   systemSettings: SystemSettings;
+  currentTool: AppTool;
+  onChangeTool: (tool: AppTool) => void;
 }
 
-type AppTool = 'MENU' | 'PRESENTATION' | 'CALC_PV' | 'CALC_ME' | 'CALC_PV_WIND' | 'CALC_HEAT';
+// --- SMART INPUT COMPONENT ---
+// Defined OUTSIDE the main component to prevent focus loss on re-render
+const SmartInput = ({ 
+  value, 
+  onChange, 
+  className = "", 
+  step = "any",
+  ...props 
+}: React.InputHTMLAttributes<HTMLInputElement> & { value: number, onChange: (val: number) => void }) => {
+  
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let valStr = e.target.value.replace(',', '.');
+    
+    if (valStr === '') {
+      onChange(0);
+    } else {
+      // Only update if it's a valid partial number (e.g. "0." should be allowed while typing)
+      if (!isNaN(Number(valStr)) || valStr.endsWith('.')) {
+         onChange(parseFloat(valStr));
+      }
+    }
+  };
+
+  return (
+    <input
+      type="number"
+      step={step}
+      // If value is 0, show empty string to allow placeholder to show or just be empty
+      // But we must handle the case where user types '0' specifically if needed, 
+      // though usually for price/qty 0 means empty in this context.
+      value={value === 0 ? '' : value}
+      onChange={handleChange}
+      className={`${className} ${value === 0 ? 'border-red-300 bg-red-50 focus:ring-red-200' : ''}`}
+      {...props}
+    />
+  );
+};
 
 export const Applications: React.FC<ApplicationsProps> = ({ 
   customers, 
@@ -21,15 +61,16 @@ export const Applications: React.FC<ApplicationsProps> = ({
   initialState, 
   clearInitialState,
   currentUser,
-  systemSettings
+  systemSettings,
+  currentTool,
+  onChangeTool
 }) => {
-  const [currentTool, setCurrentTool] = useState<AppTool>('MENU');
   const [presentationFile, setPresentationFile] = useState<string | null>(null);
 
   // Loan Calculator State
   const [showLoanCalc, setShowLoanCalc] = useState(false);
   const [loanMonths, setLoanMonths] = useState(120);
-  const [loanRate, setLoanRate] = useState(9.0);
+  const [loanRate, setLoanRate] = useState(7.0); // Default 7%
   const [defermentMonths, setDefermentMonths] = useState(0);
 
   const [calc, setCalc] = useState<CalculatorState>({
@@ -37,13 +78,16 @@ export const Applications: React.FC<ApplicationsProps> = ({
     clientId: 'ANON',
     isNewClient: false,
     newClientData: { name: '', address: '', phone: '', email: '' },
+    calcMode: 'BILL_AMOUNT', // Default mode
     tariff: 'G11',
     phases: 3, 
     consumption: 4000,
     connectionPower: 14, 
     pricePerKwh: 1.15, 
     priceOffPeak: 0.65, 
-    percentOffPeak: 40, 
+    percentOffPeak: 40,
+    currentBillAmount: 400, // Default
+    billingPeriod: '1',     // Default 1 month
     panelId: '',
     panelCount: 10,
     inverterId: '',
@@ -55,7 +99,7 @@ export const Applications: React.FC<ApplicationsProps> = ({
     roofMaterial: 'DACHOWKA',
     orientation: 'SOUTH',
     trenchLength: 0,
-    mountingSystemId: '',
+    mountingSystemId: '', 
     hasEMS: false,
     hasUPS: false,
     subsidyMojPradPV: true, 
@@ -67,7 +111,7 @@ export const Applications: React.FC<ApplicationsProps> = ({
   useEffect(() => {
     if (initialState) {
       setCalc(initialState);
-      setCurrentTool('CALC_PV');
+      // Tool switching is handled by parent when setting initialState
       clearInitialState(); 
     }
   }, [initialState, clearInitialState]);
@@ -92,8 +136,23 @@ export const Applications: React.FC<ApplicationsProps> = ({
     }
   };
 
+  const calculateDynamicConsumption = () => {
+    // Helper to calculate Annual KWh based on Bill Mode inputs
+    if (calc.calcMode === 'BILL_AMOUNT') {
+      const bill = calc.currentBillAmount || 0;
+      const period = Number(calc.billingPeriod) || 1;
+      const price = calc.pricePerKwh || 1.15;
+      
+      const annualBill = (bill / period) * 12;
+      return Math.round(annualBill / price);
+    }
+    return calc.consumption; // If in Annual KWh mode, return the entered value
+  };
+
   const autoSelectComponents = () => {
-    const neededKwp = (calc.consumption / 1000) * 1.2;
+    const annualConsumption = calculateDynamicConsumption();
+    const neededKwp = (annualConsumption / 1000) * 1.2;
+    
     const panel = panels[0];
     if (!panel) return;
 
@@ -123,6 +182,8 @@ export const Applications: React.FC<ApplicationsProps> = ({
 
     setCalc(prev => ({
       ...prev,
+      // Update consumption in state if we are in BILL mode, to persist the calculated value
+      consumption: annualConsumption, 
       panelId: panel.id,
       panelCount: count,
       inverterId: inverter?.id || '',
@@ -136,36 +197,31 @@ export const Applications: React.FC<ApplicationsProps> = ({
     const selectedPanel = panels.find(p => p.id === calc.panelId);
     const selectedInverter = inverters.find(i => i.id === calc.inverterId);
     const selectedStorage = batteries.find(b => b.id === calc.storageId);
-    const selectedMounting = accessories.find(a => a.id === calc.mountingSystemId);
+    
+    // Auto-select mounting based on type (Logic kept, UI removed)
+    const costMounting = 120 * calc.panelCount; 
 
     // Costs
     const costPanels = (selectedPanel?.price || 0) * calc.panelCount;
     const costInverter = selectedInverter?.price || 0;
     const costStorage = (selectedStorage?.price || 0) * calc.storageCount;
-    // Mounting cost logic adjusted to fit table pricing (per panel pricing + base)
-    const costMounting = (selectedMounting?.price || 120) * calc.panelCount; 
     
     const costTrench = calc.installationType === 'GROUND' ? calc.trenchLength * 100 : 0;
+    
+    // EMS/UPS Pricing
     const costEMS = calc.hasEMS ? 1500 : 0;
     const costUPS = calc.hasUPS ? 2500 : 0;
     
-    // Labor Cost Logic: Optimized to match the pricing table
-    // 10kW System: ~21,000 Total.
-    // Hardware: ~12,000 (Panels + Inv).
-    // Remaining for Labor + Mounting: ~9,000.
-    // Mounting ~2500. Labor ~6500.
-    // New Formula: Base 1500 + 100 per panel (Lower than before to fit competitive pricing)
+    // Labor Cost Logic
     const costLabor = 1500 + (calc.panelCount * 100);
 
-    // Group Costs for Subsidy Calculation (50% rule)
-    // PV Costs = Panels + Inverter + Mounting + Labor + Trench + EMS/UPS
+    // Group Costs
     const costPVTotal = costPanels + costInverter + costMounting + costLabor + costTrench + costEMS + costUPS;
-    // Storage Costs = Batteries
     const costStorageTotal = costStorage;
 
     let totalSystemPrice = costPVTotal + costStorageTotal;
     
-    // Apply Category 2 Markup (Global Admin Setting)
+    // Apply Category 2 Markup
     let appliedMarkup = 0;
     if (currentUser.salesCategory === '2') {
        if (systemSettings.cat2MarkupType === 'PERCENT') {
@@ -176,14 +232,12 @@ export const Applications: React.FC<ApplicationsProps> = ({
        totalSystemPrice += appliedMarkup;
     }
 
-    // Apply Personal Fixed Margin (Sales Rep Setting)
+    // Apply Personal Fixed Margin
     let personalMarkup = 0;
     if (currentUser.salesSettings) {
-       // Add PV margin if there's a system (checking if panels > 0)
        if (calc.panelCount > 0) {
          personalMarkup += (currentUser.salesSettings.marginPV || 0);
        }
-       // Add Storage margin if storage selected
        if (calc.storageId) {
          personalMarkup += (currentUser.salesSettings.marginStorage || 0);
        }
@@ -197,7 +251,6 @@ export const Applications: React.FC<ApplicationsProps> = ({
     let limitedByCapPV = false;
     let limitedByCapStorage = false;
 
-    // Check PV subsidy
     if (calc.subsidyMojPradPV) {
         const maxSubsidy = 7000;
         const cap50Percent = (costPVTotal + appliedMarkup + (calc.panelCount > 0 ? (currentUser.salesSettings?.marginPV || 0) : 0)) * 0.5; 
@@ -205,7 +258,6 @@ export const Applications: React.FC<ApplicationsProps> = ({
         if (subsidyPV < maxSubsidy) limitedByCapPV = true;
     }
 
-    // Check Storage subsidy (only if storage is actually selected)
     if (calc.subsidyMojPradStorage && calc.storageId) {
         const maxSubsidy = 16000;
         const cap50Percent = (costStorageTotal + (calc.storageId ? (currentUser.salesSettings?.marginStorage || 0) : 0)) * 0.5;
@@ -233,36 +285,74 @@ export const Applications: React.FC<ApplicationsProps> = ({
         effectivePricePerKwh = (calc.pricePerKwh * (dayPercent / 100)) + (calc.priceOffPeak * (calc.percentOffPeak / 100));
     }
     
-    let currentBill = calc.consumption * effectivePricePerKwh; 
+    let currentAnnualBill = 0;
+    let monthlyBill = 0;
+
+    // DETERMINE CONSUMPTION & BILL BASED ON MODE
+    if (calc.calcMode === 'BILL_AMOUNT') {
+       // Mode A: Driven by Bill Amount
+       const enteredBill = Number(calc.currentBillAmount) || 0;
+       const enteredPeriod = Number(calc.billingPeriod) || 1;
+       monthlyBill = enteredBill / enteredPeriod;
+       currentAnnualBill = monthlyBill * 12;
+    } else {
+       // Mode B: Driven by Annual kWh
+       const annualKwh = calc.consumption || 0;
+       currentAnnualBill = annualKwh * effectivePricePerKwh;
+       monthlyBill = currentAnnualBill / 12;
+    }
+
+    // Chart Calculation Logic
     let accumulatedBalance = -netInvestment; 
     let paybackYear = 0;
     let foundPayback = false;
 
     const systemPowerKw = ((selectedPanel?.power || 0) * calc.panelCount) / 1000;
+    const storageCapacity = (selectedStorage?.capacity || 0) * calc.storageCount;
+    // Estimated production ~1000 kWh per 1 kWp
     const estimatedProductionKwh = systemPowerKw * 1000; 
     
     let efficiencyRatio = 0.6; 
     if (calc.storageId) efficiencyRatio += 0.2; 
     if (calc.hasEMS) efficiencyRatio += 0.05; 
     
-    // Determine max value for chart scaling
-    let maxChartValue = 0;
+    // Determine min/max value for chart scaling
+    let maxChartValue = 0; // Highest positive value
+    let minChartValue = accumulatedBalance; // Lowest negative value (start)
+
+    let tempAnnualBill = currentAnnualBill;
 
     for (let i = 1; i <= 20; i++) {
-       const yearlyBillWithoutPV = currentBill;
+       // How much money we saved this year (production value capped by bill)
        const productionValue = estimatedProductionKwh * effectivePricePerKwh;
-       let yearlySavings = Math.min(yearlyBillWithoutPV, productionValue * efficiencyRatio);
-
+       let yearlySavings = Math.min(tempAnnualBill, productionValue * efficiencyRatio);
+       
+       if (isNaN(yearlySavings)) yearlySavings = 0;
+       
        accumulatedBalance += yearlySavings;
+       
        if (!foundPayback && accumulatedBalance >= 0) {
          paybackYear = i;
          foundPayback = true;
        }
+       
        chartData.push({ year: i, balance: accumulatedBalance, savings: yearlySavings });
        
-       if (Math.abs(accumulatedBalance) > maxChartValue) maxChartValue = Math.abs(accumulatedBalance);
+       if (accumulatedBalance > maxChartValue) maxChartValue = accumulatedBalance;
+       if (accumulatedBalance < minChartValue) minChartValue = accumulatedBalance;
        
-       currentBill = currentBill * (1 + inflation);
+       // Increase bill by inflation
+       tempAnnualBill = tempAnnualBill * (1 + inflation);
+    }
+    
+    // Safety check for empty range to prevent division by zero or NaN in chart
+    if (maxChartValue === 0 && minChartValue === 0) {
+       maxChartValue = 100;
+       minChartValue = -100;
+    }
+    if (Math.abs(maxChartValue - minChartValue) < 1) {
+        maxChartValue += 100;
+        minChartValue -= 100;
     }
 
     const inverterPower = selectedInverter?.power || 0;
@@ -274,10 +364,13 @@ export const Applications: React.FC<ApplicationsProps> = ({
     const exceedsConnectionPower = powerToCheck > calc.connectionPower;
 
     return { 
-        totalSystemPrice, netInvestment, subsidyPV, subsidyStorage, totalSubsidies, taxReturn, chartData, paybackYear, effectivePricePerKwh, systemPowerKw, inverterPower, appliedMarkup, personalMarkup,
-        exceedsConnectionPower, powerToCheck, limitedByCapPV, limitedByCapStorage, maxChartValue,
+        totalSystemPrice, netInvestment, subsidyPV, subsidyStorage, totalSubsidies, taxReturn, 
+        chartData, paybackYear, effectivePricePerKwh, systemPowerKw, inverterPower, storageCapacity, appliedMarkup, personalMarkup,
+        exceedsConnectionPower, powerToCheck, limitedByCapPV, limitedByCapStorage, 
+        maxChartValue, minChartValue,
         breakdown: { costPanels, costInverter, costStorage, costMounting, costTrench, costLabor, costEMS, costUPS },
-        components: { panel: selectedPanel, inverter: selectedInverter, storage: selectedStorage, mounting: selectedMounting }
+        components: { panel: selectedPanel, inverter: selectedInverter, storage: selectedStorage },
+        monthlyBill, currentAnnualBill
     };
   };
 
@@ -293,23 +386,33 @@ export const Applications: React.FC<ApplicationsProps> = ({
      date.setMonth(date.getMonth() + monthsDeferred);
      return date.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' });
   };
-
+  
   const financials = useMemo(() => calculateFinancials(), [calc, currentUser, systemSettings]);
 
   const handleFinishAndSave = () => {
       const offerId = Date.now().toString();
       const systemPower = ((financials.components.panel?.power || 0) * calc.panelCount) / 1000;
+      
+      // Update consumption in state one last time based on mode before saving
+      let finalConsumption = calc.consumption;
+      if (calc.calcMode === 'BILL_AMOUNT') {
+          const bill = calc.currentBillAmount || 0;
+          const period = Number(calc.billingPeriod) || 1;
+          const price = calc.pricePerKwh || 1.15;
+          finalConsumption = Math.round(((bill / period) * 12) / price);
+      }
+
       const offer: Offer = {
         id: offerId,
         name: `Instalacja PV ${systemPower.toFixed(2)} kWp (${calc.installationType === 'ROOF' ? 'Dach' : 'Grunt'})`,
         dateCreated: new Date().toISOString(),
         finalPrice: financials.totalSystemPrice,
-        calculatorState: { ...calc },
+        calculatorState: { ...calc, consumption: finalConsumption },
         appliedMarkup: financials.appliedMarkup,
         personalMarkup: financials.personalMarkup
       };
       onSaveOffer(offer, calc.isNewClient, calc.isNewClient ? calc.newClientData : undefined);
-      setCurrentTool('MENU');
+      onChangeTool('MENU');
   };
 
   const renderPvCalculator = () => {
@@ -400,24 +503,114 @@ export const Applications: React.FC<ApplicationsProps> = ({
             
             {/* Step 2: Energy */}
             {calc.step === 2 && (
-               <div className="max-w-xl mx-auto space-y-6 animate-fade-in">
-                  <div className="space-y-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+               <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+                  <div className="space-y-6 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                     <h3 className="font-bold text-xl text-slate-800 flex items-center">
+                        <Zap className="w-6 h-6 mr-2 text-amber-500" /> Profil Energetyczny
+                     </h3>
+
                      <div className="grid grid-cols-2 gap-4">
                         <div>
-                           <label className="block text-sm font-bold text-slate-700 mb-2">Instalacja</label>
-                           <select value={calc.phases} onChange={(e) => setCalc({...calc, phases: Number(e.target.value) as 1 | 3})} className="w-full p-3 border rounded-xl bg-white font-bold">
-                              <option value={1}>1-Fazowa</option>
-                              <option value={3}>3-Fazowa</option>
+                           <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Układ</label>
+                           <select value={calc.phases} onChange={(e) => setCalc({...calc, phases: Number(e.target.value) as 1 | 3})} className="w-full p-3 border rounded-xl bg-slate-50 font-bold">
+                              <option value={1}>1-Fazowy</option>
+                              <option value={3}>3-Fazowy</option>
                            </select>
                         </div>
                         <div>
-                           <label className="block text-sm font-bold text-slate-700 mb-2">Moc przyłącz. (kW)</label>
-                           <input type="number" value={calc.connectionPower} onChange={(e) => setCalc({...calc, connectionPower: Number(e.target.value)})} className="w-full p-3 border rounded-xl font-bold" />
+                           <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Moc przyłącz. (kW)</label>
+                           <SmartInput 
+                              value={calc.connectionPower} 
+                              onChange={(val) => setCalc({...calc, connectionPower: val})} 
+                              className="w-full p-3 border rounded-xl font-bold" 
+                           />
                         </div>
                      </div>
-                     <div><label className="block text-sm font-bold text-slate-700 mb-2">Zużycie (kWh)</label><input type="number" value={calc.consumption} onChange={(e) => setCalc({...calc, consumption: Number(e.target.value)})} className="w-full p-3 border rounded-xl font-bold text-lg" /></div>
-                     <div><label className="block text-sm font-bold text-slate-700 mb-2">Taryfa</label><select value={calc.tariff} onChange={(e) => setCalc({...calc, tariff: e.target.value as TariffType})} className="w-full p-3 border rounded-xl bg-white"><option value="G11">G11</option><option value="G12">G12</option></select></div>
-                     <div><label className="block text-sm font-bold text-slate-700 mb-2">Cena prądu (PLN)</label><input type="number" step="0.01" value={calc.pricePerKwh} onChange={(e) => setCalc({...calc, pricePerKwh: Number(e.target.value)})} className="w-full p-3 border rounded-xl font-bold text-lg" /></div>
+
+                     {/* Calculation Mode Tabs */}
+                     <div className="bg-slate-100 p-1 rounded-xl flex">
+                        <button 
+                           onClick={() => setCalc({...calc, calcMode: 'BILL_AMOUNT'})}
+                           className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${calc.calcMode === 'BILL_AMOUNT' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                           Mam Rachunek
+                        </button>
+                        <button 
+                           onClick={() => setCalc({...calc, calcMode: 'ANNUAL_KWH'})}
+                           className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${calc.calcMode === 'ANNUAL_KWH' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                           Znam Roczne Zużycie
+                        </button>
+                     </div>
+                     
+                     {/* Dynamic Content based on Mode */}
+                     {calc.calcMode === 'BILL_AMOUNT' ? (
+                        <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100 space-y-4 animate-slide-up">
+                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div>
+                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Kwota Rachunku (zł)</label>
+                                 <SmartInput 
+                                   value={calc.currentBillAmount} 
+                                   onChange={(val) => setCalc({...calc, currentBillAmount: val})} 
+                                   className="w-full p-3 border border-blue-200 rounded-xl font-bold text-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+                                 />
+                              </div>
+                              <div>
+                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Okres Rozliczeniowy</label>
+                                 <select 
+                                   value={calc.billingPeriod} 
+                                   onChange={(e) => setCalc({...calc, billingPeriod: e.target.value as any})}
+                                   className="w-full p-3 border border-blue-200 rounded-xl bg-white text-sm"
+                                 >
+                                    <option value="1">1 miesiąc</option>
+                                    <option value="2">2 miesiące</option>
+                                    <option value="3">Kwartał (3 msc)</option>
+                                    <option value="6">Półrocze</option>
+                                    <option value="12">Rok</option>
+                                 </select>
+                              </div>
+                           </div>
+                           <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Średnia cena za 1 kWh (zł)</label>
+                              <SmartInput 
+                                value={calc.pricePerKwh} 
+                                onChange={(val) => setCalc({...calc, pricePerKwh: val})} 
+                                className="w-full p-3 border border-blue-200 rounded-xl font-bold"
+                              />
+                           </div>
+                           <div className="pt-2 border-t border-blue-200">
+                              <p className="text-sm text-slate-600 flex justify-between">
+                                 <span>Wyliczone roczne zużycie:</span>
+                                 <span className="font-bold text-blue-700">{Math.round(calculateDynamicConsumption())} kWh</span>
+                              </p>
+                           </div>
+                        </div>
+                     ) : (
+                        <div className="p-4 bg-green-50/50 rounded-xl border border-green-100 space-y-4 animate-slide-up">
+                           <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Roczne Zużycie Energii (kWh)</label>
+                              <SmartInput 
+                                value={calc.consumption} 
+                                onChange={(val) => setCalc({...calc, consumption: val})} 
+                                className="w-full p-3 border border-green-200 rounded-xl font-bold text-lg focus:ring-2 focus:ring-green-500 outline-none" 
+                              />
+                           </div>
+                           <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cena za 1 kWh (zł)</label>
+                              <SmartInput 
+                                value={calc.pricePerKwh} 
+                                onChange={(val) => setCalc({...calc, pricePerKwh: val})} 
+                                className="w-full p-3 border border-green-200 rounded-xl font-bold"
+                              />
+                           </div>
+                           <div className="pt-2 border-t border-green-200">
+                              <p className="text-sm text-slate-600 flex justify-between">
+                                 <span>Średni miesięczny rachunek:</span>
+                                 <span className="font-bold text-green-700">{Math.round((calc.consumption * calc.pricePerKwh) / 12)} zł</span>
+                              </p>
+                           </div>
+                        </div>
+                     )}
                   </div>
                </div>
             )}
@@ -429,27 +622,57 @@ export const Applications: React.FC<ApplicationsProps> = ({
                      <h3 className="text-xl font-bold text-slate-800">Komponenty ({calc.phases}-Faza)</h3>
                      <button onClick={autoSelectComponents} className="bg-amber-500 text-white px-5 py-2 rounded-lg font-bold">Auto Dobór AI</button>
                   </div>
+
+                  {/* Power Summary Banner */}
+                  <div className="bg-slate-800 text-white p-4 rounded-xl shadow-md grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                      <div>
+                         <p className="text-xs text-slate-400 uppercase font-bold">Moc PV (Panele)</p>
+                         <p className="text-xl font-bold text-amber-400">{financials.systemPowerKw.toFixed(2)} kWp</p>
+                      </div>
+                      <div>
+                         <p className="text-xs text-slate-400 uppercase font-bold">Moc Falownika</p>
+                         <p className="text-xl font-bold text-blue-400">{financials.inverterPower.toFixed(2)} kW</p>
+                      </div>
+                      <div>
+                         <p className="text-xs text-slate-400 uppercase font-bold">Pojemność Magazynu</p>
+                         <p className="text-xl font-bold text-green-400">{financials.storageCapacity.toFixed(2)} kWh</p>
+                      </div>
+                  </div>
+
                   {financials.exceedsConnectionPower && <ConnectionPowerWarning />}
+                  
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                      <div className="bg-white p-4 rounded-xl border border-slate-200">
                          <h4 className="font-bold mb-2 flex items-center"><Sun className="w-5 h-5 mr-2 text-amber-500"/> Panele</h4>
-                         <select className="w-full p-2 border rounded mb-2 text-sm" value={calc.panelId} onChange={(e) => setCalc({...calc, panelId: e.target.value})}><option value="">Wybierz...</option>{panels.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-                         <input type="number" className="w-full p-2 border rounded font-bold" value={calc.panelCount} onChange={(e) => setCalc({...calc, panelCount: Number(e.target.value)})} />
+                         <select className="w-full p-2 border rounded mb-2 text-sm" value={calc.panelId} onChange={(e) => setCalc({...calc, panelId: e.target.value})}>
+                           <option value="">Wybierz...</option>
+                           {panels.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                         </select>
+                         <div className="flex items-center space-x-2">
+                            <span className="text-sm">Ilość:</span>
+                            <SmartInput className="w-20 p-2 border rounded font-bold" value={calc.panelCount} onChange={(val) => setCalc({...calc, panelCount: val})} />
+                         </div>
                      </div>
                      <div className="bg-white p-4 rounded-xl border border-slate-200">
                          <h4 className="font-bold mb-2 flex items-center"><Zap className="w-5 h-5 mr-2 text-blue-500"/> Falownik</h4>
-                         <select className="w-full p-2 border rounded text-sm" value={calc.inverterId} onChange={(e) => setCalc({...calc, inverterId: e.target.value})}><option value="">Wybierz...</option>{inverters.map(i => <option key={i.id} value={i.id}>{i.name} - {i.price} zł</option>)}</select>
+                         <select className="w-full p-2 border rounded text-sm" value={calc.inverterId} onChange={(e) => setCalc({...calc, inverterId: e.target.value})}>
+                           <option value="">Wybierz...</option>
+                           {inverters.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                         </select>
                      </div>
                      <div className="bg-white p-4 rounded-xl border border-slate-200">
                          <h4 className="font-bold mb-2 flex items-center"><Battery className="w-5 h-5 mr-2 text-green-500"/> Magazyn</h4>
-                         <select className="w-full p-2 border rounded mb-2 text-sm" value={calc.storageId} onChange={(e) => setCalc({...calc, storageId: e.target.value})}><option value="">Brak</option>{batteries.map(b => <option key={b.id} value={b.id}>{b.name} - {b.price} zł</option>)}</select>
-                         {calc.storageId && <input type="number" className="w-full p-2 border rounded font-bold" value={calc.storageCount} min={1} onChange={(e) => setCalc({...calc, storageCount: Number(e.target.value)})} />}
+                         <select className="w-full p-2 border rounded mb-2 text-sm" value={calc.storageId} onChange={(e) => setCalc({...calc, storageId: e.target.value})}>
+                           <option value="">Brak</option>
+                           {batteries.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                         </select>
+                         {calc.storageId && <SmartInput className="w-full p-2 border rounded font-bold" value={calc.storageCount} onChange={(val) => setCalc({...calc, storageCount: val})} />}
                      </div>
                   </div>
                </div>
             )}
 
-            {/* Step 4: Mounting (RESTORED) */}
+            {/* Step 4: Mounting & Extras */}
             {calc.step === 4 && (
                <div className="space-y-6 animate-fade-in max-w-4xl mx-auto">
                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
@@ -516,10 +739,9 @@ export const Applications: React.FC<ApplicationsProps> = ({
                          <div className="space-y-4">
                             <div>
                                <label className="block text-sm font-bold text-slate-600 mb-2">Długość Przekopu (mb)</label>
-                               <input 
-                                 type="number" 
+                               <SmartInput 
                                  value={calc.trenchLength}
-                                 onChange={(e) => setCalc({...calc, trenchLength: Number(e.target.value)})}
+                                 onChange={(val) => setCalc({...calc, trenchLength: val})}
                                  className="w-full p-3 border border-slate-300 rounded-xl"
                                  placeholder="np. 30"
                                />
@@ -540,17 +762,23 @@ export const Applications: React.FC<ApplicationsProps> = ({
                       )}
 
                       <div className="mt-6 pt-6 border-t border-slate-100">
-                         <label className="block text-sm font-bold text-slate-600 mb-2">Wybierz System Montażowy (Z Magazynu)</label>
-                         <select 
-                           className="w-full p-3 border border-slate-300 rounded-xl bg-white font-bold" 
-                           value={calc.mountingSystemId} 
-                           onChange={(e) => setCalc({...calc, mountingSystemId: e.target.value})}
-                         >
-                            <option value="">-- Wybierz System --</option>
-                            {accessories.map(a => (
-                               <option key={a.id} value={a.id}>{a.name} - {a.price} zł</option>
-                            ))}
-                         </select>
+                         <h4 className="font-bold text-slate-800 mb-4">Dodatki Systemowe</h4>
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label className={`flex items-center p-4 border rounded-xl cursor-pointer transition-all ${calc.hasEMS ? 'border-amber-500 bg-amber-50' : 'hover:bg-slate-50'}`}>
+                                <input type="checkbox" checked={calc.hasEMS} onChange={(e) => setCalc({...calc, hasEMS: e.target.checked})} className="w-5 h-5 mr-3 text-amber-500" />
+                                <div>
+                                    <span className="font-bold block">System EMS</span>
+                                    <span className="text-xs text-slate-500">Zarządzanie Energią</span>
+                                </div>
+                            </label>
+                            <label className={`flex items-center p-4 border rounded-xl cursor-pointer transition-all ${calc.hasUPS ? 'border-red-500 bg-red-50' : 'hover:bg-slate-50'}`}>
+                                <input type="checkbox" checked={calc.hasUPS} onChange={(e) => setCalc({...calc, hasUPS: e.target.checked})} className="w-5 h-5 mr-3 text-red-500" />
+                                <div>
+                                    <span className="font-bold block">System UPS</span>
+                                    <span className="text-xs text-slate-500">Zasilanie Awaryjne</span>
+                                </div>
+                            </label>
+                         </div>
                       </div>
                    </div>
                </div>
@@ -594,6 +822,41 @@ export const Applications: React.FC<ApplicationsProps> = ({
             {/* Step 6: Summary */}
             {calc.step === 6 && (
                <div className="space-y-8 animate-fade-in max-w-4xl mx-auto">
+                   
+                   {/* Components Breakdown */}
+                   <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200">
+                      <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center">
+                         <Box className="w-6 h-6 mr-2 text-blue-600" /> Twój Zestaw
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                         <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                            <p className="text-xs text-slate-400 font-bold uppercase mb-1">Panele Fotowoltaiczne</p>
+                            <p className="font-bold text-slate-800">{financials.components.panel?.name || 'Nie wybrano'}</p>
+                            <p className="text-sm text-slate-600 mt-1">{calc.panelCount} szt. ({financials.systemPowerKw} kWp)</p>
+                         </div>
+                         <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                            <p className="text-xs text-slate-400 font-bold uppercase mb-1">Falownik</p>
+                            <p className="font-bold text-slate-800">{financials.components.inverter?.name || 'Nie wybrano'}</p>
+                         </div>
+                         {financials.components.storage && (
+                            <div className="p-4 bg-green-50 rounded-xl border border-green-100">
+                               <p className="text-xs text-green-600 font-bold uppercase mb-1">Magazyn Energii</p>
+                               <p className="font-bold text-slate-800">{financials.components.storage.name}</p>
+                               <p className="text-sm text-slate-600 mt-1">{financials.storageCapacity} kWh</p>
+                            </div>
+                         )}
+                         {(calc.hasEMS || calc.hasUPS) && (
+                            <div className="p-4 bg-amber-50 rounded-xl border border-amber-100">
+                               <p className="text-xs text-amber-600 font-bold uppercase mb-1">Dodatki</p>
+                               <div className="space-y-1">
+                                  {calc.hasEMS && <div className="flex items-center font-bold text-slate-800"><Cpu className="w-4 h-4 mr-2"/> System EMS</div>}
+                                  {calc.hasUPS && <div className="flex items-center font-bold text-slate-800"><Battery className="w-4 h-4 mr-2"/> System UPS</div>}
+                               </div>
+                            </div>
+                         )}
+                      </div>
+                   </div>
+
                    <div className="bg-white p-6 md:p-8 rounded-2xl shadow-lg border border-slate-200">
                        <h3 className="text-xl md:text-2xl font-bold text-slate-800 mb-6 border-b pb-4">Podsumowanie Kosztów</h3>
                        <div className="space-y-4 text-sm md:text-base">
@@ -603,53 +866,84 @@ export const Applications: React.FC<ApplicationsProps> = ({
                            <div className="border-t border-slate-300 my-4 pt-4 flex justify-between items-center"><span className="text-lg md:text-xl font-extrabold text-slate-800 uppercase">Koszt Finalny</span><span className="text-3xl md:text-4xl font-extrabold text-blue-700">{financials.netInvestment.toLocaleString('pl-PL', {maximumFractionDigits: 0})} PLN</span></div>
                        </div>
                        
-                       {/* ROI Chart */}
-                       <div className="mt-8">
-                          <h4 className="font-bold text-slate-800 mb-4 flex items-center"><BarChart3 className="w-5 h-5 mr-2" /> Zwrot z inwestycji (20 lat)</h4>
-                          <div className="h-64 flex items-end space-x-1 relative border-b border-slate-300 pb-2">
-                             {/* Zero Line */}
-                             <div className="absolute w-full border-t border-slate-400 border-dashed" style={{ bottom: `${(Math.abs(-financials.netInvestment) / (financials.maxChartValue + financials.netInvestment)) * 100}%` }}></div>
-                             
-                             {financials.chartData.map((d) => {
-                                const isPositive = d.balance >= 0;
-                                // Calculate height percentage relative to max value
-                                // Offset base by negative investment amount to fit in graph
-                                const totalRange = financials.maxChartValue + Math.abs(-financials.netInvestment); 
-                                const zeroOffset = Math.abs(-financials.netInvestment);
-                                const barHeight = Math.abs(d.balance) / totalRange * 100;
-                                const bottomPos = isPositive 
-                                   ? (zeroOffset / totalRange * 100) 
-                                   : ((zeroOffset - Math.abs(d.balance)) / totalRange * 100);
+                       {/* ROI CHART - CONDITIONAL RENDERING */}
+                       {currentUser.salesSettings?.showRoiChart && (
+                         <div className="mt-12">
+                            <h4 className="font-bold text-slate-800 mb-8 flex items-center"><BarChart3 className="w-5 h-5 mr-2" /> Zwrot z inwestycji (20 lat)</h4>
+                            
+                            {/* Container */}
+                            <div className="h-64 relative border-b border-slate-300 w-full flex items-end">
+                               
+                               {/* Calculated Zero Line Position */}
+                               {(() => {
+                                  // Chart logic - safe defaults if range is 0
+                                  let minVal = financials.minChartValue;
+                                  let maxVal = financials.maxChartValue;
+                                  
+                                  if (Math.abs(maxVal - minVal) < 1) {
+                                     maxVal += 100;
+                                     minVal -= 100;
+                                  }
+                                  
+                                  const totalRange = maxVal - minVal;
+                                  const zeroPercent = (Math.abs(minVal) / totalRange) * 100;
+                                  
+                                  // Ensure 0 <= zeroPercent <= 100
+                                  const safeZeroPercent = Math.max(0, Math.min(100, zeroPercent));
 
-                                return (
-                                   <div key={d.year} className="flex-1 flex flex-col items-center group relative">
-                                      <div 
-                                         className={`w-full rounded-t-sm transition-all ${isPositive ? 'bg-green-500' : 'bg-red-400'}`} 
-                                         style={{ 
-                                            height: `${Math.max(1, barHeight)}%`, 
-                                            marginBottom: `${bottomPos}%`
-                                         }}
-                                      ></div>
-                                      {/* Tooltip */}
-                                      <div className="absolute bottom-full mb-2 opacity-0 group-hover:opacity-100 bg-slate-800 text-white text-[10px] p-2 rounded pointer-events-none z-10 w-24 text-center">
-                                         Rok {d.year}<br/>
-                                         {Math.round(d.balance).toLocaleString()} PLN
-                                      </div>
-                                   </div>
-                                );
-                             })}
-                          </div>
-                          <div className="flex justify-between mt-2 text-xs text-slate-500 font-bold">
-                             <span>Rok 1</span>
-                             <span>Rok 10</span>
-                             <span>Rok 20</span>
-                          </div>
-                          {financials.paybackYear > 0 && (
-                             <p className="text-center mt-4 font-bold text-green-600 bg-green-50 p-2 rounded-lg border border-green-100">
-                                Szacowany zwrot inwestycji: <span className="text-lg">{financials.paybackYear} lat</span>
-                             </p>
-                          )}
-                       </div>
+                                  return (
+                                     <>
+                                        {/* Zero Line */}
+                                        <div className="absolute w-full border-t border-slate-400 border-dashed z-10 flex items-center" style={{ bottom: `${safeZeroPercent}%` }}>
+                                           <span className="text-[10px] text-slate-500 bg-white px-1 absolute right-0 -top-2">0 PLN</span>
+                                        </div>
+
+                                        <div className="w-full h-full flex items-end justify-between gap-1 z-20">
+                                           {financials.chartData.map((d) => {
+                                              const isPositive = d.balance >= 0;
+                                              const barHeight = (Math.abs(d.balance) / totalRange) * 100;
+                                              const safeHeight = Math.max(1, barHeight); // Min height 1% to be visible
+                                              
+                                              // Dynamic Styles
+                                              const style: React.CSSProperties = isPositive 
+                                                 ? { bottom: `${safeZeroPercent}%`, height: `${safeHeight}%` }
+                                                 : { top: `${100 - safeZeroPercent}%`, height: `${safeHeight}%` };
+
+                                              return (
+                                                 <div key={d.year} className="relative flex-1 h-full">
+                                                    <div 
+                                                       className={`absolute w-full rounded-sm transition-all group ${isPositive ? 'bg-green-500' : 'bg-red-400'}`} 
+                                                       style={style}
+                                                    >
+                                                       {/* Tooltip */}
+                                                       <div className="hidden group-hover:block absolute z-50 bg-slate-800 text-white text-[10px] p-2 rounded -translate-x-1/2 left-1/2 w-24 text-center bottom-full mb-1">
+                                                          Rok {d.year}<br/>
+                                                          {Math.round(d.balance).toLocaleString()} PLN
+                                                       </div>
+                                                    </div>
+                                                 </div>
+                                              );
+                                           })}
+                                        </div>
+                                     </>
+                                  );
+                               })()}
+                            </div>
+                            
+                            <div className="flex justify-between mt-2 text-xs text-slate-500 font-bold">
+                               <span>Rok 1</span>
+                               <span>Rok 10</span>
+                               <span>Rok 20</span>
+                            </div>
+
+                            {financials.paybackYear > 0 && (
+                               <p className="text-center mt-6 font-bold text-green-700 bg-green-50 p-3 rounded-lg border border-green-100 flex items-center justify-center">
+                                  <TrendingUp className="w-5 h-5 mr-2" />
+                                  Szacowany zwrot inwestycji: <span className="text-xl ml-2">{financials.paybackYear} lat</span>
+                               </p>
+                            )}
+                         </div>
+                       )}
 
                        {/* Subscription Sim (Loan) */}
                        <div className="mt-6 border border-blue-100 bg-blue-50/50 rounded-xl overflow-hidden">
@@ -660,14 +954,47 @@ export const Applications: React.FC<ApplicationsProps> = ({
                            {showLoanCalc && (
                                <div className="p-4 border-t border-blue-100 bg-white space-y-4 animate-slide-up">
                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                       <div><label className="block text-xs font-bold text-slate-500 mb-1">Miesiące</label><input type="number" value={loanMonths} onChange={(e) => setLoanMonths(Number(e.target.value))} className="w-full p-2 border rounded-lg font-bold" /></div>
-                                       <div><label className="block text-xs font-bold text-slate-500 mb-1">Oprocentowanie (%)</label><input type="number" value={loanRate} step="0.1" onChange={(e) => setLoanRate(Number(e.target.value))} className="w-full p-2 border rounded-lg font-bold" /></div>
-                                       <div><label className="block text-xs font-bold text-slate-500 mb-1">Odroczenie</label><input type="number" value={defermentMonths} min="0" max="24" onChange={(e) => setDefermentMonths(Number(e.target.value))} className="w-full p-2 border rounded-lg font-bold" /></div>
+                                       <div><label className="block text-xs font-bold text-slate-500 mb-1">Miesiące</label><SmartInput value={loanMonths} onChange={(val) => setLoanMonths(val)} className="w-full p-2 border rounded-lg font-bold" /></div>
+                                       <div><label className="block text-xs font-bold text-slate-500 mb-1">Oprocentowanie (%)</label><SmartInput value={loanRate} step="0.1" onChange={(val) => setLoanRate(val)} className="w-full p-2 border rounded-lg font-bold" /></div>
+                                       <div><label className="block text-xs font-bold text-slate-500 mb-1">Odroczenie</label><SmartInput value={defermentMonths} onChange={(val) => setDefermentMonths(val)} className="w-full p-2 border rounded-lg font-bold" /></div>
                                    </div>
+                                   
                                    <div className="bg-amber-50 border border-amber-200 p-2 rounded-lg flex items-center justify-center text-xs font-bold text-amber-800"><CalendarClock className="w-4 h-4 mr-2" />Pierwsza płatność: {calculateFirstPaymentDate(defermentMonths)}</div>
+                                   
+                                   {/* Loan Details */}
                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                                       <div className="bg-slate-50 p-3 rounded-lg border border-slate-200"><p className="text-xs text-slate-500 mb-1">Abonament przed dotacją</p><p className="text-xl font-bold text-slate-800">{Math.round(calculateLoan(financials.totalSystemPrice, loanMonths, loanRate)).toLocaleString()} PLN</p></div>
-                                       <div className="bg-blue-50 p-3 rounded-lg border border-blue-200"><p className="text-xs text-blue-600 mb-1 font-bold">Abonament po dotacjach</p><p className="text-xl font-bold text-blue-700">{Math.round(calculateLoan(financials.netInvestment, loanMonths, loanRate)).toLocaleString()} PLN</p></div>
+                                       <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                                          <p className="text-xs text-slate-500 mb-1 font-bold uppercase">Rata bez dotacji (Brutto)</p>
+                                          <p className="text-xl font-bold text-slate-800">{Math.round(calculateLoan(financials.totalSystemPrice, loanMonths, loanRate)).toLocaleString()} PLN</p>
+                                          <p className="text-[10px] text-slate-400 mt-1">Liczona od pełnej kwoty</p>
+                                       </div>
+                                       <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                                          <p className="text-xs text-blue-600 mb-1 font-bold uppercase">Rata z dotacjami (Abonament)</p>
+                                          <p className="text-2xl font-bold text-blue-700">{Math.round(calculateLoan(financials.netInvestment, loanMonths, loanRate)).toLocaleString()} PLN</p>
+                                          <p className="text-[10px] text-blue-400 mt-1">Zakładając spłatę dotacji</p>
+                                       </div>
+                                   </div>
+
+                                   {/* Bill Comparison (Only compare to Post-Subsidy) */}
+                                   <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+                                      <div className="flex justify-between items-center mb-2">
+                                         <p className="text-xs font-bold text-slate-500 uppercase">Porównanie do obecnego rachunku</p>
+                                         <p className="font-bold text-slate-800">{Math.round(financials.monthlyBill).toLocaleString()} PLN / msc</p>
+                                      </div>
+                                      
+                                      <div className="text-sm">
+                                         {financials.monthlyBill > calculateLoan(financials.netInvestment, loanMonths, loanRate) ? (
+                                            <span className="text-green-600 font-bold flex items-center justify-center p-2 bg-green-50 rounded">
+                                               <ArrowUpRight className="w-4 h-4 mr-1 rotate-45" /> 
+                                               Taniej o {Math.round(financials.monthlyBill - calculateLoan(financials.netInvestment, loanMonths, loanRate))} PLN 
+                                               ({Math.round(((financials.monthlyBill - calculateLoan(financials.netInvestment, loanMonths, loanRate))/financials.monthlyBill)*100)}%)
+                                            </span>
+                                         ) : (
+                                            <span className="text-amber-600 font-bold flex items-center justify-center p-2 bg-amber-50 rounded">
+                                               Różnica: +{Math.round(calculateLoan(financials.netInvestment, loanMonths, loanRate) - financials.monthlyBill)} PLN
+                                            </span>
+                                         )}
+                                      </div>
                                    </div>
                                </div>
                            )}
@@ -720,7 +1047,7 @@ export const Applications: React.FC<ApplicationsProps> = ({
           <div className="text-center mb-8 md:mb-12"><h1 className="text-2xl md:text-4xl font-extrabold text-slate-900 mb-2">Aplikacje</h1><p className="text-sm md:text-lg text-slate-500">Wybierz moduł.</p></div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
             {tools.map((tool) => (
-              <button key={tool.id} onClick={() => setCurrentTool(tool.id as AppTool)} className="group bg-white rounded-2xl p-6 md:p-8 shadow-sm hover:shadow-xl transition-all border border-slate-200 flex flex-col items-center text-center">
+              <button key={tool.id} onClick={() => onChangeTool(tool.id as AppTool)} className="group bg-white rounded-2xl p-6 md:p-8 shadow-sm hover:shadow-xl transition-all border border-slate-200 flex flex-col items-center text-center">
                 <div className={`w-16 h-16 md:w-20 md:h-20 ${tool.color} rounded-2xl flex items-center justify-center text-white mb-4 md:mb-6 shadow-lg`}><tool.icon className="w-8 h-8 md:w-10 md:h-10" /></div>
                 <h3 className="text-lg md:text-xl font-bold text-slate-800 mb-1">{tool.title}</h3>
                 <p className="text-xs md:text-sm text-slate-500">{tool.desc}</p>
@@ -731,7 +1058,7 @@ export const Applications: React.FC<ApplicationsProps> = ({
       ) : (
         <div className="h-full flex flex-col">
            <div className="bg-white border-b border-slate-200 px-4 md:px-8 py-3 md:py-4 flex items-center shadow-sm sticky top-0 z-20 shrink-0">
-              <button onClick={() => setCurrentTool('MENU')} className="flex items-center text-slate-500 hover:text-slate-800 font-medium"><ArrowLeft className="w-5 h-5 mr-2" /> Menu</button>
+              <button onClick={() => onChangeTool('MENU')} className="flex items-center text-slate-500 hover:text-slate-800 font-medium"><ArrowLeft className="w-5 h-5 mr-2" /> Menu</button>
            </div>
            <div className="flex-1 p-0 md:p-8 overflow-y-auto">{renderToolContent()}</div>
         </div>

@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 import { User, UserRole, SystemSettings } from '../types';
-import { Plus, Save, Trash2, UserCog, Settings, UserCircle, X, Edit2, Mail, Lock } from 'lucide-react';
+import { Plus, Save, Trash2, UserCog, Settings, UserCircle, X, Edit2, Mail, Lock, Percent, AlertCircle } from 'lucide-react';
 
 interface EmployeesProps {
   users?: User[];
@@ -24,6 +23,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [showAddModal, setShowAddModal] = useState(false);
   
   // State for Editing
+  // Use a type that allows commissionSplit to be undefined/string during editing for validation
   const [editingUser, setEditingUser] = useState<User | null>(null);
 
   // State for Adding
@@ -32,7 +32,11 @@ export const Employees: React.FC<EmployeesProps> = ({
     email: '',
     role: UserRole.SALES,
     salesCategory: '1',
+    commissionSplit: 0
   });
+  // Temp state to allow empty string input
+  const [newCommissionInput, setNewCommissionInput] = useState<string>('0');
+  
   const [newPassword, setNewPassword] = useState('');
 
   // Settings State with Safe Defaults
@@ -53,7 +57,14 @@ export const Employees: React.FC<EmployeesProps> = ({
     e.preventDefault();
     if (!newUser.name || !newUser.email) return;
     
-    const userToAdd = { ...newUser };
+    // Validate Commission
+    if (newCommissionInput === '' || newCommissionInput === undefined) return;
+
+    const userToAdd = { 
+       ...newUser,
+       commissionSplit: Number(newCommissionInput)
+    };
+
     if (userToAdd.role !== UserRole.SALES) {
        delete userToAdd.salesCategory;
        delete userToAdd.managerId;
@@ -61,13 +72,18 @@ export const Employees: React.FC<EmployeesProps> = ({
     
     onAddUser(userToAdd, newPassword);
     setShowAddModal(false);
-    setNewUser({ name: '', email: '', role: UserRole.SALES, salesCategory: '1' });
+    setNewUser({ name: '', email: '', role: UserRole.SALES, salesCategory: '1', commissionSplit: 0 });
+    setNewCommissionInput('0');
     setNewPassword('');
   };
 
   const handleEditSubmit = (e: React.FormEvent) => {
      e.preventDefault();
      if (editingUser) {
+        // Double check validity before sending
+        if (editingUser.commissionSplit === undefined || editingUser.commissionSplit === null) {
+           return;
+        }
         onUpdateUser(editingUser);
         setEditingUser(null);
      }
@@ -85,6 +101,10 @@ export const Employees: React.FC<EmployeesProps> = ({
       cat2MarkupType: markupType,
       cat2MarkupValue: markupValue
     });
+  };
+
+  const isCommissionInvalid = (val: number | undefined | null) => {
+     return val === undefined || val === null || isNaN(val) || val.toString() === '';
   };
 
   return (
@@ -167,10 +187,20 @@ export const Employees: React.FC<EmployeesProps> = ({
                                      <div className="space-y-1">
                                         <p><span className="text-slate-400">Kategoria:</span> <b>{user.salesCategory === '1' ? '1 (Standard)' : '2 (Wyższa marża)'}</b></p>
                                         {manager && <p><span className="text-slate-400">Przełożony:</span> {manager.name}</p>}
+                                        <p><span className="text-slate-400">Podział prowizji:</span> <b className="text-green-600">{user.commissionSplit || 0}%</b></p>
                                      </div>
                                   )}
                                   {user.role === UserRole.SALES_MANAGER && (
-                                     <p className="text-xs text-slate-500 italic">Zarządza zespołem</p>
+                                     <div className="space-y-1">
+                                       <p className="text-xs text-slate-500 italic">Zarządza zespołem</p>
+                                       <p><span className="text-slate-400">Podział prowizji:</span> <b className="text-green-600">{user.commissionSplit || 0}%</b></p>
+                                     </div>
+                                  )}
+                                  {user.role === UserRole.ADMIN && (
+                                     <div className="space-y-1">
+                                        <p className="text-xs text-slate-400">Pełen dostęp</p>
+                                        <p><span className="text-slate-400">Podział prowizji:</span> <b className="text-green-600">{user.commissionSplit || 0}%</b></p>
+                                     </div>
                                   )}
                                </td>
                                <td className="p-4 text-right">
@@ -294,11 +324,12 @@ export const Employees: React.FC<EmployeesProps> = ({
                            ))}
                         </select>
                      </div>
-                     {newUser.role === UserRole.SALES && (
-                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
-                           <div className="flex items-center space-x-2 text-blue-800 font-bold text-sm pb-2 border-b border-slate-200">
-                                <Settings className="w-4 h-4" /> <span>Opcje Handlowca</span>
-                           </div>
+                     <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
+                        <div className="flex items-center space-x-2 text-blue-800 font-bold text-sm pb-2 border-b border-slate-200">
+                             <Settings className="w-4 h-4" /> <span>Opcje Pracownika</span>
+                        </div>
+                        {newUser.role === UserRole.SALES && (
+                           <>
                            <div>
                               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Kategoria Prowizyjna</label>
                               <select value={newUser.salesCategory} onChange={e => setNewUser({...newUser, salesCategory: e.target.value as any})} className="w-full p-2.5 border border-slate-300 rounded-lg bg-white text-sm text-slate-800">
@@ -315,13 +346,42 @@ export const Employees: React.FC<EmployeesProps> = ({
                                  ))}
                               </select>
                            </div>
+                           </>
+                        )}
+                        <div>
+                           <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex justify-between">
+                              Podział Prowizji (%)
+                              {(newCommissionInput === '' || newCommissionInput === undefined) && <span className="text-red-500 text-[10px] flex items-center"><AlertCircle className="w-3 h-3 mr-1"/> Wymagane</span>}
+                           </label>
+                           <div className="relative">
+                              <Percent className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                              <input 
+                                 type="number" 
+                                 min="0" 
+                                 max="100" 
+                                 value={newCommissionInput} 
+                                 onChange={e => setNewCommissionInput(e.target.value)} 
+                                 className={`w-full pl-9 pr-3 py-2.5 border rounded-lg bg-white text-sm text-slate-800 outline-none focus:ring-2 ${
+                                    (newCommissionInput === '' || newCommissionInput === undefined) 
+                                      ? 'border-red-500 ring-red-200 focus:ring-red-500 bg-red-50' 
+                                      : 'border-slate-300 focus:ring-blue-500'
+                                 }`} 
+                                 placeholder="np. 50"
+                              />
+                           </div>
+                           <p className="text-[10px] text-slate-400 mt-1">Procent marży wypłacany pracownikowi.</p>
                         </div>
-                     )}
+                     </div>
                   </form>
               </div>
               <div className="p-5 border-t border-slate-100 flex justify-end space-x-3 bg-white rounded-b-2xl shrink-0">
                   <button type="button" onClick={() => setShowAddModal(false)} className="px-5 py-2.5 text-slate-500 font-bold hover:bg-slate-100 rounded-xl">Anuluj</button>
-                  <button type="submit" form="addUserForm" className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold shadow-sm hover:bg-blue-700 flex items-center">
+                  <button 
+                     type="submit" 
+                     form="addUserForm" 
+                     disabled={newCommissionInput === '' || newCommissionInput === undefined}
+                     className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold shadow-sm hover:bg-blue-700 flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
                       <Plus className="w-4 h-4 mr-2" /> Utwórz Konto
                   </button>
               </div>
@@ -360,11 +420,12 @@ export const Employees: React.FC<EmployeesProps> = ({
                            ))}
                         </select>
                      </div>
-                     {editingUser.role === UserRole.SALES && (
-                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
-                           <div className="flex items-center space-x-2 text-blue-800 font-bold text-sm pb-2 border-b border-slate-200">
-                              <Settings className="w-4 h-4" /> <span>Ustawienia Sprzedażowe</span>
-                           </div>
+                     <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
+                        <div className="flex items-center space-x-2 text-blue-800 font-bold text-sm pb-2 border-b border-slate-200">
+                           <Settings className="w-4 h-4" /> <span>Ustawienia Sprzedażowe</span>
+                        </div>
+                        {editingUser.role === UserRole.SALES && (
+                           <>
                            <div>
                               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Kategoria Prowizyjna</label>
                               <select value={editingUser.salesCategory || '1'} onChange={e => setEditingUser({...editingUser, salesCategory: e.target.value as any})} className="w-full p-2 border border-slate-300 rounded bg-white text-sm text-slate-800">
@@ -381,8 +442,38 @@ export const Employees: React.FC<EmployeesProps> = ({
                                  ))}
                               </select>
                            </div>
+                           </>
+                        )}
+                        <div>
+                           <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex justify-between">
+                              Podział Prowizji (%)
+                              {isCommissionInvalid(editingUser.commissionSplit) && <span className="text-red-500 text-[10px] flex items-center"><AlertCircle className="w-3 h-3 mr-1"/> Wymagane</span>}
+                           </label>
+                           <div className="relative">
+                              <Percent className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                              <input 
+                                 type="number" 
+                                 min="0" 
+                                 max="100" 
+                                 // Handle empty input by converting to string if needed or handling in onChange
+                                 value={editingUser.commissionSplit === undefined || editingUser.commissionSplit === null ? '' : editingUser.commissionSplit} 
+                                 onChange={e => {
+                                    const val = e.target.value;
+                                    setEditingUser({
+                                       ...editingUser, 
+                                       commissionSplit: val === '' ? undefined : Number(val) as any
+                                    });
+                                 }} 
+                                 className={`w-full pl-9 pr-3 py-2.5 border rounded-lg bg-white text-sm text-slate-800 outline-none focus:ring-2 ${
+                                    isCommissionInvalid(editingUser.commissionSplit) 
+                                      ? 'border-red-500 ring-red-200 focus:ring-red-500 bg-red-50' 
+                                      : 'border-slate-300 focus:ring-blue-500'
+                                 }`} 
+                                 placeholder="np. 50"
+                              />
+                           </div>
                         </div>
-                     )}
+                     </div>
                   </form>
                 </div>
                 <div className="p-5 border-t border-slate-100 flex justify-between items-center bg-white rounded-b-xl shrink-0">
@@ -391,7 +482,12 @@ export const Employees: React.FC<EmployeesProps> = ({
                     </button>
                     <div className="flex space-x-3">
                        <button type="button" onClick={() => setEditingUser(null)} className="px-5 py-2 text-slate-500 font-bold hover:bg-slate-100 rounded-lg">Anuluj</button>
-                       <button type="submit" form="editUserForm" className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-sm hover:bg-blue-700 flex items-center">
+                       <button 
+                         type="submit" 
+                         form="editUserForm" 
+                         disabled={isCommissionInvalid(editingUser.commissionSplit)}
+                         className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-sm hover:bg-blue-700 flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                       >
                           <Save className="w-4 h-4 mr-2" /> Zapisz
                        </button>
                     </div>
