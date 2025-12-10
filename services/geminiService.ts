@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { Customer, Installation, InventoryItem, ProductCategory } from "../types";
 
@@ -89,13 +90,24 @@ export const analyzeInventory = async (inventory: InventoryItem[]): Promise<stri
     const ai = new GoogleGenAI({ apiKey: apiKey });
 
     const inventoryData = inventory.map(item => 
-      `${item.name} (${item.category}): ${item.quantity} ${item.unit}. Min: ${item.minQuantity}. Gwarancja: ${item.warranty}.${item.power ? ` Moc: ${item.power}${item.category === ProductCategory.PANEL ? 'W' : 'kW'}.` : ''}${item.capacity ? ` Pojemność: ${item.capacity}kWh.` : ''}${item.url ? ` Link: ${item.url}` : ''}`
+      `${item.name} (${item.category}): ${item.quantity} ${item.unit}. Min: ${item.minQuantity}. Gwarancja: ${item.warranty}.` +
+      `${item.power ? ` Moc: ${item.power}${item.category === ProductCategory.PANEL ? 'W' : 'kW'}.` : ''}` +
+      `${item.capacity ? ` Pojemność: ${item.capacity}kWh.` : ''}` +
+      `${item.variant ? ` Wariant: ${item.variant}.` : ''}` +
+      `${item.inverterType ? ` Typ Falownika: ${item.inverterType}.` : ''}` +
+      `${item.voltageType ? ` Napięcie: ${item.voltageType}.` : ''}` +
+      `${item.url ? ` Link: ${item.url}` : ''}`
     ).join('\n');
 
     const prompt = `
       Jesteś kierownikiem magazynu firmy fotowoltaicznej. Przeanalizuj poniższy stan magazynowy i napisz krótki raport (maks 3-4 zdania).
       Zwróć uwagę na produkty, których stan jest poniżej minimum lub bliski zera.
-      Weź pod uwagę, czy mamy wystarczająco dużo paneli i falowników.
+      
+      Specyfika:
+      - Zwróć uwagę na braki w falownikach Hybrydowych vs Sieciowych.
+      - Sprawdź czy mamy panele (Standard vs Bifacial).
+      - Sprawdź dopasowanie magazynów (HV/LV) do falowników jeśli to możliwe.
+      
       Pamiętaj, że dla falowników (Inwertery) i magazynów energii moc jest podawana w kW, a dla paneli w W.
       Zasugeruj co należy domówić i w razie potrzeby użyj dostępnych linków do produktów w sugestiach.
       

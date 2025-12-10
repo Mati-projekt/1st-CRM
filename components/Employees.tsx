@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { User, UserRole, SystemSettings } from '../types';
 import { Plus, Save, Trash2, UserCog, Settings, UserCircle, X, Edit2, Mail, Lock, Percent, AlertCircle } from 'lucide-react';
@@ -258,8 +259,8 @@ export const Employees: React.FC<EmployeesProps> = ({
                   </label>
                   <input 
                     type="number" 
-                    value={markupValue}
-                    onChange={(e) => setMarkupValue(Number(e.target.value))}
+                    value={markupValue === 0 ? '' : markupValue}
+                    onChange={(e) => setMarkupValue(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full p-3 border rounded-lg font-bold text-lg text-slate-900 bg-white"
                     min="0"
                   />
@@ -456,12 +457,12 @@ export const Employees: React.FC<EmployeesProps> = ({
                                  min="0" 
                                  max="100" 
                                  // Handle empty input by converting to string if needed or handling in onChange
-                                 value={editingUser.commissionSplit === undefined || editingUser.commissionSplit === null ? '' : editingUser.commissionSplit} 
+                                 value={editingUser.commissionSplit === undefined || editingUser.commissionSplit === null ? '' : (editingUser.commissionSplit === 0 ? '' : editingUser.commissionSplit)} 
                                  onChange={e => {
                                     const val = e.target.value;
                                     setEditingUser({
                                        ...editingUser, 
-                                       commissionSplit: val === '' ? undefined : Number(val) as any
+                                       commissionSplit: val === '' ? 0 : Number(val) as any // If cleared, set to 0 internally
                                     });
                                  }} 
                                  className={`w-full pl-9 pr-3 py-2.5 border rounded-lg bg-white text-sm text-slate-800 outline-none focus:ring-2 ${

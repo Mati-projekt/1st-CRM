@@ -1,6 +1,7 @@
+
 import React, { useState } from 'react';
 import { Installation, InstallationStatus, Customer, UserRole, User } from '../types';
-import { Calendar, MapPin, ChevronRight, Banknote, Briefcase, Lock, Users, Clock, Hammer, Phone, Navigation, Box, Zap, CheckCircle, ArrowRight, Home, Shovel, CheckSquare, Square, List, CalendarDays, ChevronLeft, Map, ZoomIn, ZoomOut } from 'lucide-react';
+import { Calendar, MapPin, ChevronRight, Banknote, Briefcase, Lock, Users, Clock, Hammer, Phone, Navigation, Box, Zap, CheckCircle, ArrowRight, Home, Shovel, CheckSquare, Square, List, CalendarDays, ChevronLeft, Map, ZoomIn, ZoomOut, AlertCircle, Battery, RotateCcw } from 'lucide-react';
 
 interface InstallationsProps {
   installations: Installation[];
@@ -127,7 +128,7 @@ export const Installations: React.FC<InstallationsProps> = ({
                 <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg ${isToday ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
                    <Calendar className="w-4 h-4" />
                    <span className="font-bold text-sm">
-                      {inst.dateScheduled || 'Nieustalona data'}
+                      {inst.dateScheduled || 'Do ustalenia'}
                    </span>
                    {isToday && <span className="ml-1 text-[10px] bg-blue-500 px-1.5 rounded uppercase font-bold tracking-wider">Dziś</span>}
                 </div>
@@ -295,7 +296,7 @@ export const Installations: React.FC<InstallationsProps> = ({
 
       // Empty slots
       for (let i = 0; i < offset; i++) {
-         days.push(<div key={`empty-${i}`} className="min-h-[100px] bg-slate-50/50 border border-slate-100"></div>);
+         days.push(<div key={`empty-${i}`} className="bg-slate-50/50 border border-slate-100 flex flex-col"></div>);
       }
 
       for (let d = 1; d <= daysInMonth; d++) {
@@ -324,13 +325,17 @@ export const Installations: React.FC<InstallationsProps> = ({
          }
 
          days.push(
-            <div key={d} className={`min-h-[100px] border border-slate-200 p-1 relative flex flex-col ${bgClass}`}>
-               <div className={`text-xs font-bold mb-1 flex justify-between px-1 ${textClass}`}>
+            <div 
+               key={d} 
+               className={`border border-slate-200 p-1 relative flex flex-col overflow-hidden ${bgClass}`}
+               style={{ minHeight: '80px', height: 'auto' }}
+            >
+               <div className={`text-xs font-bold mb-1 flex justify-between px-1 shrink-0 ${textClass}`}>
                   <span>{d}</span>
                   {isHoliday && <span className="text-[9px] uppercase tracking-tighter">Święto</span>}
                </div>
                
-               <div className="flex-1 space-y-1 overflow-y-auto custom-scrollbar">
+               <div className="flex-1 space-y-1">
                  {dayJobs.map(job => {
                    const city = (getInstallationAddress(job) || '').split(',')[0].trim();
                    return (
@@ -343,9 +348,17 @@ export const Installations: React.FC<InstallationsProps> = ({
                            <MapPin className="w-3 h-3 mr-1 text-blue-500 shrink-0" />
                            {city || 'Adres'}
                         </div>
-                        <div className="flex items-center text-[9px] font-medium text-slate-500 mt-0.5 ml-4">
-                           <Zap className="w-2.5 h-2.5 mr-1 text-amber-500" />
-                           {job.systemSizeKw} kWp
+                        <div className="flex flex-col items-start mt-0.5 ml-4">
+                           <div className="flex items-center text-[9px] font-medium text-slate-500">
+                              <Zap className="w-2.5 h-2.5 mr-1 text-amber-500" />
+                              {job.systemSizeKw} kWp
+                           </div>
+                           {job.storageSizeKw && job.storageSizeKw > 0 && (
+                              <div className="flex items-center text-[9px] font-medium text-green-600">
+                                 <Battery className="w-2.5 h-2.5 mr-1" />
+                                 {job.storageSizeKw} kWh
+                              </div>
+                           )}
                         </div>
                      </div>
                    );
@@ -412,19 +425,26 @@ export const Installations: React.FC<InstallationsProps> = ({
                 </div>
              )
           ) : (
-             <div className="animate-fade-in bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex-1">
-                <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+             <div className="animate-fade-in bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex-1 flex flex-col min-h-0">
+                <div className="p-4 border-b border-slate-100 flex justify-between items-center shrink-0">
                    <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))} className="p-2 hover:bg-slate-100 rounded-lg"><ChevronLeft className="w-5 h-5 text-slate-600" /></button>
                    <h3 className="font-bold text-slate-800">{currentMonth.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' })}</h3>
-                   <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))} className="p-2 hover:bg-slate-100 rounded-lg"><ChevronRight className="w-5 h-5 text-slate-600" /></button>
+                   <div className="flex items-center">
+                      <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))} className="p-2 hover:bg-slate-100 rounded-lg"><ChevronRight className="w-5 h-5 text-slate-600" /></button>
+                      <button onClick={() => setCurrentMonth(new Date())} className="ml-2 p-2 hover:bg-slate-100 rounded-lg text-blue-600" title="Wróć do dzisiaj"><RotateCcw className="w-4 h-4" /></button>
+                   </div>
                 </div>
-                <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
-                   {['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb', 'Nd'].map((d, i) => (
-                      <div key={d} className={`p-2 text-center text-xs font-bold ${i >= 5 ? 'text-red-400' : 'text-slate-400'}`}>{d}</div>
-                   ))}
-                </div>
-                <div className="grid grid-cols-7 bg-slate-200 gap-px">
-                   {renderCalendar()}
+                
+                {/* Scrollable Container */}
+                <div className="flex-1 overflow-y-auto relative min-h-0 flex flex-col">
+                   <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50 shrink-0 sticky top-0 z-10">
+                      {['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb', 'Nd'].map((d, i) => (
+                         <div key={d} className={`p-2 text-center text-xs font-bold ${i >= 5 ? 'text-red-400' : 'text-slate-400'}`}>{d}</div>
+                      ))}
+                   </div>
+                   <div className="grid grid-cols-7 bg-slate-200 gap-px auto-rows-fr">
+                      {renderCalendar()}
+                   </div>
                 </div>
              </div>
           )}
@@ -491,6 +511,8 @@ export const Installations: React.FC<InstallationsProps> = ({
                    <div className="p-3 flex-1 overflow-y-auto space-y-3 custom-scrollbar">
                      {colInstalls.map(inst => {
                        const paymentPercent = inst.price > 0 ? (inst.paidAmount / inst.price) * 100 : 0;
+                       const noDate = !inst.dateScheduled;
+
                        return (
                        <div 
                         key={inst.id} 
@@ -500,9 +522,18 @@ export const Installations: React.FC<InstallationsProps> = ({
                          {/* Header Line */}
                          <div className="flex justify-between items-start">
                            <span className="text-[10px] font-bold text-slate-400 font-mono">#{inst.id.slice(0,6)}</span>
-                           <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded-md border border-slate-200 shadow-sm">
-                              {inst.systemSizeKw} kWp
-                           </span>
+                           <div className="flex gap-1">
+                              <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded-md border border-slate-200 shadow-sm flex items-center">
+                                 <Zap className="w-2.5 h-2.5 mr-1 text-amber-500" />
+                                 {inst.systemSizeKw} kWp
+                              </span>
+                              {inst.storageSizeKw && inst.storageSizeKw > 0 && (
+                                 <span className="text-[10px] font-bold bg-green-50 text-green-700 px-2 py-1 rounded-md border border-green-100 shadow-sm flex items-center">
+                                    <Battery className="w-2.5 h-2.5 mr-1" />
+                                    {inst.storageSizeKw} kWh
+                                 </span>
+                              )}
+                           </div>
                          </div>
                          
                          {/* Main Info */}
@@ -529,24 +560,43 @@ export const Installations: React.FC<InstallationsProps> = ({
                          {/* Modern Logistics Section (Date & Team) */}
                          <div className="bg-slate-50/80 rounded-lg p-2.5 border border-slate-100 space-y-2.5 mt-1" onClick={(e) => e.stopPropagation()}>
                             
-                            {/* Date Picker */}
-                            <div className="group/date">
-                               <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center">
-                                  <Calendar className="w-3 h-3 mr-1.5 text-blue-500" />
+                            {/* Date Picker (Fixed for SecurityError) */}
+                            <div className="group/date relative">
+                               <label className={`text-[9px] font-bold uppercase tracking-wider mb-1 flex items-center ${noDate ? 'text-red-500' : 'text-slate-400'}`}>
+                                  {noDate ? <AlertCircle className="w-3 h-3 mr-1.5" /> : <Calendar className="w-3 h-3 mr-1.5 text-blue-500" />}
                                   Data Montażu
                                   {!canEditDate && <Lock className="w-2.5 h-2.5 ml-auto text-slate-300" />}
                                </label>
-                               <input 
-                                  type="date" 
-                                  value={inst.dateScheduled || ''} 
-                                  disabled={!canEditDate}
-                                  onChange={(e) => handleDateChange(e, inst)}
-                                  className={`w-full text-xs font-bold p-1.5 rounded-md border transition-all outline-none bg-white ${
-                                    canEditDate 
-                                      ? 'border-slate-200 hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 text-slate-800 cursor-pointer shadow-sm' 
-                                      : 'border-transparent bg-transparent text-slate-500 cursor-not-allowed pl-0'
-                                  }`}
-                               />
+                               
+                               <div className="relative">
+                                  {/* Visual "Button" for No Date */}
+                                  {noDate && (
+                                     <div className={`w-full text-xs font-extrabold p-2 rounded-md border text-center uppercase tracking-wide transition-all absolute inset-0 flex items-center justify-center z-10 pointer-events-none ${
+                                        canEditDate 
+                                           ? 'bg-red-500 text-white border-red-600 shadow-md animate-pulse' 
+                                           : 'bg-slate-200 text-slate-500 border-slate-300'
+                                     }`}>
+                                        DO USTALENIA
+                                     </div>
+                                  )}
+                                  
+                                  {/* Actual Input (Transparent Overlay when noDate, or Visible when hasDate) */}
+                                  <input 
+                                     type="date" 
+                                     value={inst.dateScheduled || ''} 
+                                     disabled={!canEditDate}
+                                     onChange={(e) => handleDateChange(e, inst)}
+                                     className={`w-full text-xs font-bold p-1.5 rounded-md border transition-all outline-none relative z-20 ${
+                                       canEditDate 
+                                         ? 'cursor-pointer' 
+                                         : 'cursor-not-allowed'
+                                     } ${
+                                        noDate 
+                                          ? 'opacity-0 h-8' // Make invisible but clickable over the button
+                                          : 'opacity-100 bg-white border-slate-200 hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 text-slate-800 shadow-sm'
+                                     }`}
+                                  />
+                               </div>
                             </div>
 
                             {/* Team Picker */}

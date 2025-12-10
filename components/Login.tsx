@@ -1,28 +1,31 @@
-
 import React, { useState, useEffect } from 'react';
 import { Sun, Lock, User, ArrowRight, AlertCircle, CheckSquare, Square } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
+import { MOCK_USERS } from '../constants';
+import { User as AppUser } from '../types';
 
 interface LoginProps {
-  onLogin: () => void; 
+  onLogin: (user?: AppUser) => Promise<void> | void; 
+  onLoginStart: () => void;
 }
 
-export const Login: React.FC<LoginProps> = ({ onLogin }) => {
-  const [identifier, setIdentifier] = useState(''); // Email or Name
+export const Login: React.FC<LoginProps> = ({ onLogin, onLoginStart }) => {
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Safety timeout to reset loading state if something hangs indefinitely
+  // Timeout safety
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout>;
     if (isLoading) {
       timeout = setTimeout(() => {
         if (isLoading) {
           setIsLoading(false);
+          setError("Przekroczono limit czasu. Jeśli baza śpi (free tier), spróbuj ponownie za 10 sekund.");
         }
-      }, 15000); // 15s safety valve
+      }, 30000); // 30s timeout
     }
     return () => clearTimeout(timeout);
   }, [isLoading]);
@@ -32,40 +35,48 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setError(null);
     setIsLoading(true);
 
+    onLoginStart();
+
+    const emailToLogin = identifier.trim();
+
     try {
-      let emailToLogin = identifier.trim();
+      let finalEmail = emailToLogin;
 
       // Logic: If input doesn't look like an email, try to find the email by name in 'profiles'
       if (!emailToLogin.includes('@')) {
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('email')
-          .ilike('name', emailToLogin) // Case insensitive check
+          .ilike('name', emailToLogin)
           .maybeSingle();
 
         if (profileError || !profile) {
           throw new Error("Nie znaleziono użytkownika o takiej nazwie.");
         }
-        emailToLogin = profile.email;
+        finalEmail = profile.email;
       }
 
       // Proceed with Supabase Auth
-      // Note: Persistence is configured globally in supabaseClient.ts (localStorage)
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email: emailToLogin,
+        email: finalEmail,
         password,
       });
 
       if (signInError) throw signInError;
       
+      // CRITICAL FIX: Explicitly tell the parent component we succeeded
+      await onLogin();
+      
     } catch (err: any) {
       console.error("Auth error:", err);
-      setIsLoading(false); // Only stop loading on error
+      setIsLoading(false);
       
       if (err.message && err.message.includes("Email not confirmed")) {
         setError("Adres email nie został potwierdzony. Sprawdź skrzynkę pocztową.");
       } else if (err.message && err.message.includes("Invalid login credentials")) {
         setError("Błędne dane logowania.");
+      } else if (err.message && err.message.includes("fetch")) {
+        setError("Problem z połączeniem. Sprawdź internet lub spróbuj ponownie.");
       } else {
         setError(err.message || "Błąd logowania");
       }

@@ -1,7 +1,6 @@
 
-
 import React from 'react';
-import { LayoutDashboard, Users, Wrench, Package, Sun, Grid, UserCircle, LogOut, X, UserCog } from 'lucide-react';
+import { LayoutDashboard, Users, Wrench, Package, Sun, Grid, UserCircle, LogOut, X, UserCog, CalendarRange, Megaphone } from 'lucide-react';
 import { ViewState, User, UserRole } from '../types';
 
 interface SidebarProps {
@@ -11,9 +10,10 @@ interface SidebarProps {
   onLogout: () => void;
   isOpen: boolean;
   onClose: () => void;
+  unreadNotifications?: number;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, currentUser, onLogout, isOpen, onClose }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, currentUser, onLogout, isOpen, onClose, unreadNotifications = 0 }) => {
   
   // Define permission logic
   const canAccess = (role: UserRole, view: ViewState): boolean => {
@@ -21,13 +21,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, cur
       case UserRole.ADMIN:
         return true; // Access everything
       case UserRole.SALES_MANAGER:
-        return ['DASHBOARD', 'CUSTOMERS', 'INSTALLATIONS', 'APPLICATIONS'].includes(view);
+        return ['DASHBOARD', 'CUSTOMERS', 'INSTALLATIONS', 'APPLICATIONS', 'INSTALLATION_CALENDAR', 'ANNOUNCEMENTS'].includes(view);
       case UserRole.SALES:
         return ['DASHBOARD', 'CUSTOMERS', 'INSTALLATIONS', 'APPLICATIONS'].includes(view);
       case UserRole.INSTALLER:
-        return ['INSTALLATIONS', 'INVENTORY'].includes(view);
+        return ['INSTALLATIONS', 'INVENTORY', 'INSTALLATION_CALENDAR'].includes(view);
       case UserRole.OFFICE:
-        return ['DASHBOARD', 'CUSTOMERS', 'INSTALLATIONS', 'INVENTORY'].includes(view);
+        return ['DASHBOARD', 'CUSTOMERS', 'INSTALLATIONS', 'INVENTORY', 'INSTALLATION_CALENDAR', 'ANNOUNCEMENTS'].includes(view);
       default:
         return false;
     }
@@ -35,11 +35,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, cur
 
   const menuItems = [
     { id: 'DASHBOARD', label: 'Pulpit', icon: LayoutDashboard },
+    // Notifications moved to Dashboard tabs
     { id: 'CUSTOMERS', label: 'Klienci', icon: Users },
     { id: 'INSTALLATIONS', label: 'Montaże', icon: Wrench },
+    { id: 'INSTALLATION_CALENDAR', label: 'Kalendarz Montaży', icon: CalendarRange },
     { id: 'INVENTORY', label: 'Magazyn', icon: Package },
     { id: 'APPLICATIONS', label: 'Aplikacja', icon: Grid },
     { id: 'EMPLOYEES', label: 'Pracownicy', icon: UserCog },
+    { id: 'ANNOUNCEMENTS', label: 'Komunikaty', icon: Megaphone },
   ];
 
   // Map roles to Polish labels
@@ -54,7 +57,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, cur
     }
   };
 
-  const visibleMenuItems = menuItems.filter(item => canAccess(currentUser.role, item.id as ViewState));
+  const visibleMenuItems = menuItems.filter(item => {
+    // Only Admin, Office, Manager sees Announcements creator in menu
+    if (item.id === 'ANNOUNCEMENTS' && ![UserRole.ADMIN, UserRole.OFFICE, UserRole.SALES_MANAGER].includes(currentUser.role)) return false;
+    
+    return canAccess(currentUser.role, item.id as ViewState);
+  });
 
   return (
     <div className={`
@@ -79,14 +87,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, cur
             <button
               key={item.id}
               onClick={() => onChangeView(item.id as ViewState)}
-              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-all duration-200 ${
                 isActive 
                   ? 'bg-blue-600 text-white shadow-lg' 
                   : 'text-slate-400 hover:bg-slate-800 hover:text-white'
               }`}
             >
-              <item.icon className={`w-5 h-5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-              <span className="font-medium">{item.label}</span>
+              <div className="flex items-center space-x-3">
+                <item.icon className={`w-5 h-5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                <span className="font-medium">{item.label}</span>
+              </div>
             </button>
           );
         })}

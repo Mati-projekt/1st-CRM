@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pl">
   <head>
@@ -55,6 +56,30 @@
       .animate-shake {
         animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
       }
+
+      /* RICH TEXT EDITOR STYLES - Fixes for lists and formatting */
+      .editor-content ul {
+        list-style-type: disc;
+        padding-left: 1.5em;
+        margin-top: 0.5em;
+        margin-bottom: 0.5em;
+      }
+      .editor-content ol {
+        list-style-type: decimal;
+        padding-left: 1.5em;
+        margin-top: 0.5em;
+        margin-bottom: 0.5em;
+      }
+      .editor-content li {
+        margin-bottom: 0.25em;
+      }
+      .editor-content a {
+        color: #2563eb;
+        text-decoration: underline;
+      }
+      .editor-content h1 { font-size: 2em; font-weight: bold; margin-bottom: 0.5em; }
+      .editor-content h2 { font-size: 1.5em; font-weight: bold; margin-bottom: 0.5em; }
+      .editor-content p { margin-bottom: 0.5em; }
     </style>
 <script type="importmap">
 {

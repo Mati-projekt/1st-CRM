@@ -1,5 +1,4 @@
 
-
 export enum InstallationStatus {
   NEW = 'Nowy',
   AUDIT = 'Audyt',
@@ -15,8 +14,12 @@ export enum ProductCategory {
   PANEL = 'Panele PV',
   INVERTER = 'Falowniki',
   ENERGY_STORAGE = 'Magazyny Energii',
-  ACCESSORIES = 'Akcesoria',
-  ADDONS = 'Dodatki'
+  HEAT_PUMP = 'Pompy Ciepła',
+  BOILER = 'Kotły',
+  HEATING_ACCESSORY = 'Akcesoria Grzewcze',
+  ACCESSORIES = 'Akcesoria PV',
+  ADDONS = 'Dodatki',
+  SERVICE = 'Usługi'
 }
 
 export enum UserRole {
@@ -35,6 +38,7 @@ export interface SalesSettings {
   marginPV: number;      // Fixed amount in PLN or Percent
   marginHeat: number;    // Fixed amount in PLN or Percent
   marginStorage: number; // Fixed amount in PLN or Percent
+  marginHybrid?: number; // New: Fixed amount for PV + Storage combo
   showRoiChart?: boolean; // Toggle for ROI Chart visibility
 }
 
@@ -68,6 +72,7 @@ export interface Task {
   type?: TaskType;
   description?: string;
   customerName?: string;
+  customerId?: string; // Links task to a specific customer profile
   phone?: string;
   address?: string;
 }
@@ -87,6 +92,7 @@ export interface UploadedFile {
   type: string;
   dateUploaded: string;
   url?: string;
+  category?: string; // Added for Audit Categories
 }
 
 export type TariffType = 'G11' | 'G12' | 'G12w' | 'C11' | 'C12a' | 'C12b';
@@ -129,7 +135,8 @@ export interface CalculatorState {
   inverterId: string;
   storageId: string;
   storageCount: number;
-  connectionPowerWarningAccepted: boolean; 
+  connectionPowerWarningAccepted: boolean;
+  forceHybrid?: boolean; // New field: Allow user to force hybrid inverter without storage
 
   // Step 4: Mounting & Addons
   installationType: InstallationType; 
@@ -149,15 +156,103 @@ export interface CalculatorState {
   taxRelief: 'NONE' | '12' | '32'; 
 }
 
+export interface HeatingCalculatorState {
+  step: number;
+  systemType: 'HEAT_PUMP' | 'GAS' | 'PELLET' | 'OTHER';
+  mode: 'QUICK_QUOTE' | 'AUDIT';
+  
+  // Client (shared with PV logic structure for consistency)
+  clientId: string | 'ANON';
+  isNewClient: boolean;
+  newClientData: {
+    name: string;
+    address: string;
+    phone: string;
+    email: string;
+  };
+
+  // Building Data
+  address: string;
+  lat?: number;
+  lon?: number;
+  avgTemp?: number;
+  
+  buildingType: 'NEW' | 'OLD' | 'RETROFIT' | 'FLAT_ROOF' | 'PITCHED_ROOF';
+  yearBuilt?: number;
+  area?: number;
+  
+  // Dimensions for advanced calculation
+  dimensions: {
+     A: number;
+     B: number;
+     C: number;
+     D: number;
+  };
+  
+  hasBasement: boolean;
+  ventilation: 'GRAVITY' | 'MECHANICAL' | 'RECUPERATION';
+  
+  // Thermal details
+  heatedArea: number; // m2
+  roomHeight: number; // m
+  
+  // Insulation
+  wallMaterial: string;
+  wallThickness: number; // mm
+  wallInsulation: string;
+  wallInsulationThickness: number; // mm
+  
+  atticInsulation: string;
+  atticInsulationThickness: number; // mm
+  
+  floorInsulation: string;
+  floorInsulationThickness: number; // mm
+  
+  // Windows & Doors
+  glazingType: 'OLD_SINGLE' | 'OLD_DOUBLE' | 'NEW_DOUBLE' | 'NEW_TRIPLE';
+  glazingArea: number; // m2
+  
+  doors: { type: string, width: number, height: number, count: number }[];
+  
+  // Heating System
+  emitterType: 'RADIATORS' | 'UNDERFLOOR' | 'MIXED' | 'RAD_LOW' | 'RAD_HIGH';
+  targetTemp: number; // 21 C
+  
+  // CWU
+  hasCWU: boolean;
+  occupants: number;
+  dailyWaterUsage: number; // L per person
+  startWaterTemp: number;
+  endWaterTemp: number; // 45-55 C
+  
+  // Results / Selection
+  calculatedHeatingPower: number; // kW
+  selectedProducer: string;
+  selectedHeatPumpId: string;
+  selectedTankId: string;
+  selectedBufferId: string;
+  selectedServices: string[];
+}
+
 export interface Offer {
   id: string;
   name: string;
   dateCreated: string;
   finalPrice: number;
+  type?: 'PV' | 'HEAT_PUMP'; // Added type discriminator
   calculatorState: CalculatorState;
   status?: 'DRAFT' | 'ACCEPTED';
   appliedMarkup?: number;
   personalMarkup?: number; 
+}
+
+export interface CustomerNote {
+  id: string;
+  content: string;
+  authorId: string;
+  authorName: string;
+  authorRole: UserRole;
+  date: string;
 }
 
 export interface Customer {
@@ -166,7 +261,8 @@ export interface Customer {
   email: string;
   phone: string;
   address: string;
-  notes: string;
+  notes: string; // Keep for legacy/summary
+  notesHistory?: CustomerNote[]; // Structured history
   repId?: string;
   files?: UploadedFile[];
   auditPhotos?: UploadedFile[];
@@ -182,11 +278,20 @@ export interface InventoryItem {
   price: number;
   unit: string;
   warranty: string;
-  power?: number;   // kW for Inverters/Storage, W for Panels
+  power?: number;   // kW for Inverters/Storage/HeatPumps, W for Panels
   capacity?: number; // kWh
   phases?: 1 | 3; 
   url?: string;
   dateAdded?: string;
+  variant?: 'STANDARD' | 'BIFACIAL'; // For panels
+  voltageType?: 'HV' | 'LV'; // For Inverters/Storage
+  inverterType?: 'NETWORK' | 'HYBRID'; // For Inverters
+  
+  // Specific Heat Pump Fields
+  heatPumpType?: 'AIR_WATER' | 'GROUND' | 'WATER_WATER' | 'AIR_AIR';
+  refrigerant?: string; // e.g. R290, R32
+  minOperationTemp?: number; // e.g. -25
+  temperatureZone?: 'LOW' | 'HIGH';
 }
 
 export interface PaymentEntry {
@@ -195,6 +300,7 @@ export interface PaymentEntry {
   amount: number;
   recordedBy: string;
   comment?: string;
+  attachments?: UploadedFile[]; // Added support for files (invoices, confirmations)
 }
 
 export interface Installation {
@@ -229,4 +335,28 @@ export interface Installation {
   };
 }
 
-export type ViewState = 'DASHBOARD' | 'CUSTOMERS' | 'INSTALLATIONS' | 'INVENTORY' | 'APPLICATIONS' | 'EMPLOYEES';
+export type NotificationCategory = 'SALES' | 'STOCK' | 'FINANCE' | 'INSTALLATION' | 'MESSAGE';
+
+export interface AppNotification {
+  id: string;
+  category: NotificationCategory;
+  title: string;
+  message: string;
+  date: string;
+  read: boolean;
+  linkTo?: { view: ViewState, id?: string };
+}
+
+export interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  imageUrl?: string;
+  targetRoles: string[]; // 'ALL' or specific UserRole
+  createdBy?: string;
+  createdAt: string;
+}
+
+export type ViewState = 'DASHBOARD' | 'CUSTOMERS' | 'INSTALLATIONS' | 'INVENTORY' | 'APPLICATIONS' | 'EMPLOYEES' | 'NOTIFICATIONS' | 'INSTALLATION_CALENDAR' | 'ANNOUNCEMENTS';
+
+export type NotificationType = 'success' | 'info' | 'error';

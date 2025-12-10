@@ -1,7 +1,7 @@
+
 import React, { useEffect } from 'react';
 import { CheckCircle, Info, X } from 'lucide-react';
-
-export type NotificationType = 'success' | 'info' | 'error';
+import { NotificationType } from '../types';
 
 interface NotificationProps {
   message: string;

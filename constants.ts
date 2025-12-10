@@ -1,5 +1,4 @@
 
-
 import { Customer, Installation, InstallationStatus, InventoryItem, ProductCategory, User, UserRole, Task, Message } from "./types";
 
 export const MOCK_USERS: User[] = [
@@ -66,32 +65,29 @@ export const MOCK_CUSTOMERS: Customer[] = [
 ];
 
 export const MOCK_INVENTORY: InventoryItem[] = [
-  // PANELE (Ceny dopasowane do tabeli PV 10kW ~21k)
-  { id: 'p1', name: 'Jinko Tiger Neo 440W N-Type', category: ProductCategory.PANEL, quantity: 200, minQuantity: 50, price: 460, unit: 'szt.', power: 440, warranty: '25 lat', dateAdded: '2023-10-01T10:00:00Z' },
-  { id: 'p2', name: 'Longi Solar Hi-MO 6 435W', category: ProductCategory.PANEL, quantity: 200, minQuantity: 40, price: 450, unit: 'szt.', power: 435, warranty: '15 lat', dateAdded: '2023-11-10T16:50:00Z' },
+  // PANELE
+  { id: 'p1', name: 'Jinko Tiger Neo 440W N-Type', category: ProductCategory.PANEL, quantity: 200, minQuantity: 50, price: 460, unit: 'szt.', power: 440, warranty: '25 lat', dateAdded: '2023-10-01T10:00:00Z', variant: 'STANDARD' },
+  { id: 'p2', name: 'Longi Solar Hi-MO 6 435W', category: ProductCategory.PANEL, quantity: 200, minQuantity: 40, price: 450, unit: 'szt.', power: 435, warranty: '15 lat', dateAdded: '2023-11-10T16:50:00Z', variant: 'STANDARD' },
+  { id: 'p3', name: 'Jinko 475W Bifacial', category: ProductCategory.PANEL, quantity: 50, minQuantity: 20, price: 520, unit: 'szt.', power: 475, warranty: '30 lat', dateAdded: '2023-12-05T10:00:00Z', variant: 'BIFACIAL' },
   
-  // FALOWNIKI STANDARDOWE (Dla zestawów bez magazynu)
-  { id: 'i1', name: 'FoxESS 3.0 (1F) Standard', category: ProductCategory.INVERTER, quantity: 5, minQuantity: 2, price: 3000, unit: 'szt.', warranty: '12 lat', power: 3, phases: 1, dateAdded: '2023-10-05T12:30:00Z' },
-  { id: 'i2', name: 'FoxESS 5.0 (3F) Standard', category: ProductCategory.INVERTER, quantity: 10, minQuantity: 5, price: 4000, unit: 'szt.', warranty: '12 lat', power: 5, phases: 3, dateAdded: '2023-10-06T09:15:00Z' },
-  { id: 'i3', name: 'FoxESS 8.0 (3F) Standard', category: ProductCategory.INVERTER, quantity: 8, minQuantity: 3, price: 4800, unit: 'szt.', warranty: '12 lat', power: 8, phases: 3, dateAdded: '2023-10-06T09:15:00Z' },
-  { id: 'i4', name: 'FoxESS 10.0 (3F) Standard', category: ProductCategory.INVERTER, quantity: 12, minQuantity: 5, price: 5200, unit: 'szt.', warranty: '12 lat', power: 10, phases: 3, dateAdded: '2023-10-06T09:15:00Z' },
-  { id: 'i5', name: 'FoxESS 15.0 (3F) Standard', category: ProductCategory.INVERTER, quantity: 4, minQuantity: 2, price: 6500, unit: 'szt.', warranty: '12 lat', power: 15, phases: 3, dateAdded: '2023-10-06T09:15:00Z' },
-  { id: 'i6', name: 'FoxESS 20.0 (3F) Standard', category: ProductCategory.INVERTER, quantity: 2, minQuantity: 1, price: 7500, unit: 'szt.', warranty: '12 lat', power: 20, phases: 3, dateAdded: '2023-10-06T09:15:00Z' },
+  // FALOWNIKI STANDARDOWE (Sieciowe)
+  { id: 'i1', name: 'FoxESS 3.0 (1F) Standard', category: ProductCategory.INVERTER, quantity: 5, minQuantity: 2, price: 3000, unit: 'szt.', warranty: '12 lat', power: 3, phases: 1, dateAdded: '2023-10-05T12:30:00Z', inverterType: 'NETWORK' },
+  { id: 'i2', name: 'FoxESS 5.0 (3F) Standard', category: ProductCategory.INVERTER, quantity: 10, minQuantity: 5, price: 4000, unit: 'szt.', warranty: '12 lat', power: 5, phases: 3, dateAdded: '2023-10-06T09:15:00Z', inverterType: 'NETWORK' },
+  { id: 'i3', name: 'FoxESS 8.0 (3F) Standard', category: ProductCategory.INVERTER, quantity: 8, minQuantity: 3, price: 4800, unit: 'szt.', warranty: '12 lat', power: 8, phases: 3, dateAdded: '2023-10-06T09:15:00Z', inverterType: 'NETWORK' },
+  { id: 'i4', name: 'FoxESS 10.0 (3F) Standard', category: ProductCategory.INVERTER, quantity: 12, minQuantity: 5, price: 5200, unit: 'szt.', warranty: '12 lat', power: 10, phases: 3, dateAdded: '2023-10-06T09:15:00Z', inverterType: 'NETWORK' },
+  { id: 'i5', name: 'FoxESS 15.0 (3F) Standard', category: ProductCategory.INVERTER, quantity: 4, minQuantity: 2, price: 6500, unit: 'szt.', warranty: '12 lat', power: 15, phases: 3, dateAdded: '2023-10-06T09:15:00Z', inverterType: 'NETWORK' },
+  { id: 'i6', name: 'FoxESS 20.0 (3F) Standard', category: ProductCategory.INVERTER, quantity: 2, minQuantity: 1, price: 7500, unit: 'szt.', warranty: '12 lat', power: 20, phases: 3, dateAdded: '2023-10-06T09:15:00Z', inverterType: 'NETWORK' },
 
-  // FALOWNIKI HYBRYDOWE (Dla zestawów z magazynem - Ceny wyższe o ~2-3k od standardowych)
-  { id: 'ih1', name: 'FoxESS H3-5.0 Hybrid', category: ProductCategory.INVERTER, quantity: 5, minQuantity: 2, price: 6500, unit: 'szt.', warranty: '12 lat', power: 5, phases: 3, dateAdded: '2023-10-07T09:15:00Z' },
-  { id: 'ih2', name: 'FoxESS H3-8.0 Hybrid', category: ProductCategory.INVERTER, quantity: 5, minQuantity: 2, price: 7800, unit: 'szt.', warranty: '12 lat', power: 8, phases: 3, dateAdded: '2023-10-07T09:15:00Z' },
-  { id: 'ih3', name: 'FoxESS H3-10.0 Hybrid', category: ProductCategory.INVERTER, quantity: 8, minQuantity: 2, price: 8500, unit: 'szt.', warranty: '12 lat', power: 10, phases: 3, dateAdded: '2023-10-07T09:15:00Z' },
-  { id: 'ih4', name: 'FoxESS H3-12.0 Hybrid', category: ProductCategory.INVERTER, quantity: 4, minQuantity: 2, price: 9200, unit: 'szt.', warranty: '12 lat', power: 12, phases: 3, dateAdded: '2023-10-07T09:15:00Z' },
+  // FALOWNIKI HYBRYDOWE
+  { id: 'ih1', name: 'FoxESS H3-5.0 Hybrid', category: ProductCategory.INVERTER, quantity: 5, minQuantity: 2, price: 6500, unit: 'szt.', warranty: '12 lat', power: 5, phases: 3, dateAdded: '2023-10-07T09:15:00Z', inverterType: 'HYBRID' },
+  { id: 'ih2', name: 'FoxESS H3-8.0 Hybrid', category: ProductCategory.INVERTER, quantity: 5, minQuantity: 2, price: 7800, unit: 'szt.', warranty: '12 lat', power: 8, phases: 3, dateAdded: '2023-10-07T09:15:00Z', inverterType: 'HYBRID' },
+  { id: 'ih3', name: 'FoxESS H3-10.0 Hybrid', category: ProductCategory.INVERTER, quantity: 8, minQuantity: 2, price: 8500, unit: 'szt.', warranty: '12 lat', power: 10, phases: 3, dateAdded: '2023-10-07T09:15:00Z', inverterType: 'HYBRID' },
+  { id: 'ih4', name: 'FoxESS H3-12.0 Hybrid', category: ProductCategory.INVERTER, quantity: 4, minQuantity: 2, price: 9200, unit: 'szt.', warranty: '12 lat', power: 12, phases: 3, dateAdded: '2023-10-07T09:15:00Z', inverterType: 'HYBRID' },
 
-  // MAGAZYNY ENERGII (Ceny dopasowane do różnicy w tabeli - "Z magazynem" vs "Cena zero")
-  // 5.7 kWh
+  // MAGAZYNY ENERGII
   { id: 's1', name: 'FoxESS ECS 5.76 kWh (Master+Slave)', category: ProductCategory.ENERGY_STORAGE, quantity: 10, minQuantity: 2, price: 7500, unit: 'kpl.', warranty: '10 lat', power: 5, capacity: 5.76, dateAdded: '2023-11-01T08:45:00Z' },
-  // 10-11 kWh
   { id: 's2', name: 'FoxESS ECS 11.52 kWh (Master+3xSlave)', category: ProductCategory.ENERGY_STORAGE, quantity: 5, minQuantity: 1, price: 13500, unit: 'kpl.', warranty: '10 lat', power: 10, capacity: 11.52, dateAdded: '2023-11-01T08:45:00Z' },
-  // 15 kWh
   { id: 's3', name: 'FoxESS ECS 14.4 kWh (Master+4xSlave)', category: ProductCategory.ENERGY_STORAGE, quantity: 3, minQuantity: 1, price: 17500, unit: 'kpl.', warranty: '10 lat', power: 10, capacity: 14.4, dateAdded: '2023-11-01T08:45:00Z' },
-  // 20 kWh
   { id: 's4', name: 'FoxESS ECS 20.16 kWh (2xStack)', category: ProductCategory.ENERGY_STORAGE, quantity: 2, minQuantity: 1, price: 23500, unit: 'kpl.', warranty: '10 lat', power: 10, capacity: 20.16, dateAdded: '2023-11-01T08:45:00Z' },
 
   // SYSTEMY MONTAŻOWE
@@ -100,7 +96,7 @@ export const MOCK_INVENTORY: InventoryItem[] = [
   { id: 'm3', name: 'Ekierki dach płaski (15 stopni)', category: ProductCategory.ACCESSORIES, quantity: 50, minQuantity: 5, price: 200, unit: 'szt.', warranty: '10 lat', dateAdded: '2023-09-25T11:10:00Z' },
   { id: 'm4', name: 'Konstrukcja Gruntowa 2-podporowa', category: ProductCategory.ACCESSORIES, quantity: 20, minQuantity: 2, price: 400, unit: 'szt.', warranty: '15 lat', dateAdded: '2023-09-25T11:10:00Z' },
 
-  // AKCESORIA (Koszty drobne wliczone w montaż)
+  // AKCESORIA
   { id: 'a1', name: 'Kabel solarny 6mm2', category: ProductCategory.ADDONS, quantity: 500, minQuantity: 200, price: 4, unit: 'mb', warranty: '5 lat', dateAdded: '2023-09-20T14:20:00Z' },
   { id: 'a2', name: 'Złączki MC4 (Para)', category: ProductCategory.ADDONS, quantity: 200, minQuantity: 50, price: 8, unit: 'szt.', warranty: '2 lata', dateAdded: '2023-10-15T13:05:00Z' },
   { id: 'a3', name: 'Skrzynka AC/DC (Zabezpieczenia)', category: ProductCategory.ADDONS, quantity: 15, minQuantity: 5, price: 800, unit: 'szt.', warranty: '2 lata', dateAdded: '2023-10-15T13:05:00Z' },

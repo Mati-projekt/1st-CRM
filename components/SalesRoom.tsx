@@ -118,7 +118,7 @@ export const SalesRoom: React.FC<SalesRoomProps> = ({
     startDay = startDay === 0 ? 6 : startDay - 1;
 
     const days = [];
-    for (let i = 0; i < startDay; i++) days.push(<div key={`empty-${i}`} className="h-20 md:h-28 bg-slate-50/30 border border-slate-100"></div>);
+    for (let i = 0; i < startDay; i++) days.push(<div key={`empty-${i}`} className="bg-slate-50/30 border border-slate-100 flex flex-col"></div>);
     
     for (let i = 1; i <= daysInMonth; i++) {
       const dateObj = new Date(year, month, i);
@@ -138,15 +138,16 @@ export const SalesRoom: React.FC<SalesRoomProps> = ({
         <div 
           key={i} 
           onClick={() => { setSelectedDate(dateStr); setShowTaskModal(true); }}
-          className={`h-20 md:h-28 border border-slate-100 p-1 md:p-2 relative hover:bg-amber-50 transition-colors cursor-pointer group flex flex-col ${bgClass}`}
+          className={`border border-slate-100 p-1 md:p-2 relative hover:bg-amber-50 transition-colors cursor-pointer group flex flex-col overflow-hidden ${bgClass}`}
+          style={{ minHeight: '80px', height: 'auto' }}
         >
-          <div className="flex justify-between items-start">
+          <div className="flex justify-between items-start shrink-0">
              <span className={`text-xs md:text-sm font-medium w-5 h-5 md:w-7 md:h-7 flex items-center justify-center rounded-full ${isToday ? 'bg-blue-600 text-white' : (isHoliday ? 'text-red-600 font-bold' : 'text-slate-700')}`}>
                {i}
              </span>
              {isHoliday && <span className="text-[8px] md:text-[10px] text-red-500 font-bold uppercase tracking-tighter">Święto</span>}
           </div>
-          <div className="mt-1 space-y-1 flex-1 overflow-y-auto custom-scrollbar">
+          <div className="mt-1 space-y-1">
              {dayTasks.map(t => (
                <div key={t.id} className={`text-[8px] md:text-[10px] px-1 py-0.5 rounded truncate shadow-sm ${t.completed ? 'bg-green-100 text-green-700 line-through opacity-70' : 'bg-blue-100 text-blue-700'}`}>
                  {t.title}
@@ -206,7 +207,7 @@ export const SalesRoom: React.FC<SalesRoomProps> = ({
     <div className="flex flex-col h-full bg-slate-50 font-sans">
       
       {/* Top Header */}
-      <div className="bg-white border-b border-slate-200 px-4 md:px-8 py-4 md:py-6 flex flex-col md:flex-row justify-between items-start md:items-center shadow-sm z-10 gap-4">
+      <div className="bg-white border-b border-slate-200 px-4 md:px-8 py-4 md:py-6 flex flex-col md:flex-row justify-between items-start md:items-center shadow-sm z-10 gap-4 shrink-0">
         <div>
            <h2 className="text-xl md:text-2xl font-bold text-slate-800 flex items-center">Pokój Handlowca</h2>
         </div>
@@ -270,8 +271,8 @@ export const SalesRoom: React.FC<SalesRoomProps> = ({
         )}
 
         {activeTab === 'CALENDAR' && (
-          <div className="animate-fade-in bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-             <div className="p-4 md:p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+          <div className="animate-fade-in bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-[600px]">
+             <div className="p-4 md:p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 shrink-0">
                 <div className="flex items-center space-x-4">
                    <h3 className="text-lg md:text-2xl font-bold text-slate-800 capitalize">
                      {currentDate.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' })}
@@ -279,17 +280,19 @@ export const SalesRoom: React.FC<SalesRoomProps> = ({
                    <div className="flex space-x-1 bg-white rounded-lg border border-slate-200 p-0.5">
                      <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))} className="p-1"><ChevronLeft className="w-5 h-5"/></button>
                      <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))} className="p-1"><ChevronRight className="w-5 h-5"/></button>
+                     <div className="w-px h-6 bg-slate-100 mx-1"></div>
+                     <button onClick={() => setCurrentDate(new Date())} className="px-3 py-1 text-xs font-bold text-blue-600 hover:bg-blue-50 rounded">Dziś</button>
                    </div>
                 </div>
              </div>
              
-             <div className="p-2 md:p-6 overflow-x-auto">
-                <div className="grid grid-cols-7 gap-px mb-2 text-center min-w-[300px]">
+             <div className="flex-1 overflow-y-auto p-2 md:p-6 pt-0 flex flex-col relative min-h-0">
+                <div className="grid grid-cols-7 gap-px mb-2 text-center min-w-[300px] shrink-0 sticky top-0 bg-white z-10 pt-4 pb-2 border-b border-slate-100">
                    {['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Ndz'].map((day, i) => (
                      <div key={day} className={`text-[10px] md:text-xs font-bold uppercase ${i >= 5 ? 'text-red-400' : 'text-slate-400'}`}>{day}</div>
                    ))}
                 </div>
-                <div className="grid grid-cols-7 border border-slate-200 bg-slate-200 gap-px rounded-xl overflow-hidden shadow-inner min-w-[300px]">
+                <div className="grid grid-cols-7 border border-slate-200 bg-slate-200 gap-px rounded-xl overflow-hidden shadow-inner min-w-[300px] auto-rows-fr">
                    {renderCalendarGrid()}
                 </div>
              </div>
