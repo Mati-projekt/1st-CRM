@@ -2,8 +2,8 @@
 import { Customer, Installation, InstallationStatus, InventoryItem, ProductCategory, User, UserRole, Task, Message } from "./types";
 
 export const MOCK_USERS: User[] = [
-  { id: 'admin1', name: 'Adam Administrator', role: UserRole.ADMIN, email: 'admin@solarcrm.pl', salesSettings: { marginType: 'PERCENT', marginPV: 8, marginHeat: 10, marginStorage: 5 } },
-  { id: 'sales1', name: 'Hubert Handlowiec', role: UserRole.SALES, email: 'handlowiec@solarcrm.pl', salesSettings: { marginType: 'PERCENT', marginPV: 10, marginHeat: 12, marginStorage: 8 } },
+  { id: 'admin1', name: 'Adam Administrator', role: UserRole.ADMIN, email: 'admin@solarcrm.pl', salesSettings: { marginType: 'PERCENT', marginPV: 8, marginHeat: 10, marginStorage: 5, marginPellet: 8 } },
+  { id: 'sales1', name: 'Hubert Handlowiec', role: UserRole.SALES, email: 'handlowiec@solarcrm.pl', salesSettings: { marginType: 'PERCENT', marginPV: 10, marginHeat: 12, marginStorage: 8, marginPellet: 10 } },
   { id: 'team1', name: 'Marek Montażysta', role: UserRole.INSTALLER, email: 'ekipa1@solarcrm.pl' },
   { id: 'office1', name: 'Beata Biurowa', role: UserRole.OFFICE, email: 'biuro@solarcrm.pl' },
 ];
@@ -89,6 +89,17 @@ export const MOCK_INVENTORY: InventoryItem[] = [
   { id: 's2', name: 'FoxESS ECS 11.52 kWh (Master+3xSlave)', category: ProductCategory.ENERGY_STORAGE, quantity: 5, minQuantity: 1, price: 13500, unit: 'kpl.', warranty: '10 lat', power: 10, capacity: 11.52, dateAdded: '2023-11-01T08:45:00Z' },
   { id: 's3', name: 'FoxESS ECS 14.4 kWh (Master+4xSlave)', category: ProductCategory.ENERGY_STORAGE, quantity: 3, minQuantity: 1, price: 17500, unit: 'kpl.', warranty: '10 lat', power: 10, capacity: 14.4, dateAdded: '2023-11-01T08:45:00Z' },
   { id: 's4', name: 'FoxESS ECS 20.16 kWh (2xStack)', category: ProductCategory.ENERGY_STORAGE, quantity: 2, minQuantity: 1, price: 23500, unit: 'kpl.', warranty: '10 lat', power: 10, capacity: 20.16, dateAdded: '2023-11-01T08:45:00Z' },
+
+  // POMPY CIEPŁA
+  { id: 'hp1', name: 'Nibe F2120-12', category: ProductCategory.HEAT_PUMP, quantity: 3, minQuantity: 1, price: 32000, unit: 'szt.', warranty: '5 lat', power: 12, heatPumpType: 'AIR_WATER', refrigerant: 'R410A', minOperationTemp: -25, temperatureZone: 'HIGH', dateAdded: '2023-11-15T10:00:00Z' },
+  { id: 'hp2', name: 'Panasonic Aquarea T-Cap 9kW', category: ProductCategory.HEAT_PUMP, quantity: 5, minQuantity: 2, price: 28000, unit: 'szt.', warranty: '5 lat', power: 9, heatPumpType: 'AIR_WATER', refrigerant: 'R32', minOperationTemp: -28, temperatureZone: 'HIGH', dateAdded: '2023-11-16T12:00:00Z' },
+  { id: 'hp3', name: 'Daikin Altherma 3 8kW', category: ProductCategory.HEAT_PUMP, quantity: 4, minQuantity: 1, price: 35000, unit: 'szt.', warranty: '5 lat', power: 8, heatPumpType: 'AIR_WATER', refrigerant: 'R32', minOperationTemp: -25, temperatureZone: 'LOW', dateAdded: '2023-11-18T09:00:00Z' },
+
+  // KOTŁY NA PELLET (NEW)
+  { id: 'b1', name: 'Defro Kompakt EkoPell 12kW', category: ProductCategory.BOILER, quantity: 5, minQuantity: 2, price: 18500, unit: 'szt.', warranty: '5 lat', power: 12, dateAdded: '2023-11-20T10:00:00Z', url: 'https://img.defro.pl/images/produkty/kotly/kompakt-ekopell/defro-kompakt-ekopell.png' },
+  { id: 'b2', name: 'Kostrzewa Mini Bio 10kW', category: ProductCategory.BOILER, quantity: 3, minQuantity: 1, price: 14200, unit: 'szt.', warranty: '5 lat', power: 10, dateAdded: '2023-11-25T14:00:00Z' },
+  { id: 'b3', name: 'Lazar SmartFire 15kW', category: ProductCategory.BOILER, quantity: 2, minQuantity: 1, price: 22000, unit: 'szt.', warranty: '7 lat', power: 15, dateAdded: '2023-12-01T09:00:00Z' },
+  { id: 'b4', name: 'SAS BIO EFEKT 14kW', category: ProductCategory.BOILER, quantity: 4, minQuantity: 2, price: 16800, unit: 'szt.', warranty: '5 lat', power: 14, dateAdded: '2023-12-02T11:00:00Z' },
 
   // SYSTEMY MONTAŻOWE
   { id: 'm1', name: 'Konstrukcja na dach skośny (Dachówka)', category: ProductCategory.ACCESSORIES, quantity: 100, minQuantity: 10, price: 120, unit: 'szt.', warranty: '10 lat', dateAdded: '2023-09-25T11:10:00Z' },

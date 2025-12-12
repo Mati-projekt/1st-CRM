@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import { supabase } from './services/supabaseClient';
 import { 
   User, Customer, Installation, InventoryItem, Task, Message, ViewState, UserRole, 
   AppNotification, NotificationCategory, Offer, InstallationStatus, Announcement, 
-  SystemSettings, CalculatorState, AppTool, PaymentEntry, NotificationType 
+  SystemSettings, CalculatorState, AppTool, PaymentEntry, NotificationType, HeatingCalculatorState, StorageCalculatorState 
 } from './types';
 import { Login } from './components/Login';
 import { Sidebar } from './components/Sidebar';
@@ -20,6 +19,7 @@ import { AnnouncementCreator } from './components/AnnouncementCreator';
 import { AnnouncementModal } from './components/AnnouncementModal';
 import { NotificationsCenter } from './components/NotificationsCenter';
 import { MOCK_INVENTORY, MOCK_CUSTOMERS, MOCK_INSTALLATIONS, MOCK_USERS, MOCK_TASKS, MOCK_MESSAGES } from './constants';
+import { Loader2, Sun } from 'lucide-react';
 
 // --- MAPPING HELPERS (DB snake_case <-> App camelCase) ---
 
@@ -56,7 +56,7 @@ const mapCustomerFromDB = (c: any): Customer => ({
    address: c.address,
    notes: c.notes,
    notesHistory: c.notes_history || [],
-   repId: c.rep_id, // Map snake_case to camelCase
+   repId: c.rep_id, // Map camelCase to snake_case
    files: c.files || [],
    auditPhotos: c.audit_photos || [],
    offers: c.offers || []
@@ -82,6 +82,7 @@ const mapInstallationToDB = (inst: Partial<Installation>) => {
     address: inst.address,
     system_size_kw: inst.systemSizeKw,
     status: inst.status,
+    type: inst.type, // Map Type
     price: inst.price,
     paid_amount: inst.paidAmount,
     panel_model: inst.panelModel,
@@ -107,6 +108,7 @@ const mapInstallationFromDB = (dbInst: any): Installation => {
     address: dbInst.address,
     systemSizeKw: dbInst.system_size_kw,
     status: dbInst.status,
+    type: dbInst.type, // Map Type
     price: dbInst.price,
     paidAmount: dbInst.paid_amount,
     panelModel: dbInst.panel_model,
@@ -185,6 +187,8 @@ const mapMessageFromDB = (m: any): Message => ({
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  // NEW: State for loading screen
+  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(false);
   const [view, setView] = useState<ViewState>('DASHBOARD');
   
   // Data States
@@ -200,7 +204,7 @@ const App: React.FC = () => {
   // App State
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({ cat2MarkupType: 'PERCENT', cat2MarkupValue: 5 });
   const [currentTool, setCurrentTool] = useState<AppTool>('MENU');
-  const [calculatorState, setCalculatorState] = useState<CalculatorState | null>(null);
+  const [calculatorState, setCalculatorState] = useState<CalculatorState | HeatingCalculatorState | StorageCalculatorState | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   
   // UI State
@@ -321,55 +325,70 @@ const App: React.FC = () => {
       if (!currentUser) return;
       
       try {
+        // PERFORMANCE OPTIMIZATION: Fetch all data in parallel using Promise.all
+        // This avoids the "waterfall" effect where each request waits for the previous one to finish.
+        // NOTE: Optimized 'customers' select to NOT fetch heavy JSONB columns (files/photos) on initial load.
+        const [
+          usersRes,
+          customersRes,
+          inventoryRes,
+          installationsRes,
+          messagesRes,
+          settingsRes
+        ] = await Promise.all([
+          supabase.from('profiles').select('*'),
+          // Optimizing Customer Fetch - Excluding heavy files/audit_photos for list view
+          supabase.from('customers').select('id, name, email, phone, address, rep_id, notes, offers'), 
+          supabase.from('inventory').select('*'),
+          supabase.from('installations').select('*'),
+          supabase.from('messages').select('*').or(`from_id.eq.${currentUser.id},to_id.eq.${currentUser.id}`),
+          supabase.from('system_settings').select('*').single()
+        ]);
+
         // 1. PROFILES (Users)
-        const { data: dbUsers, error: usersError } = await supabase.from('profiles').select('*');
-        if (usersError) throw usersError;
-        
-        if (!dbUsers || dbUsers.length === 0) {
+        if (usersRes.error) throw usersRes.error;
+        if (!usersRes.data || usersRes.data.length === 0) {
            console.warn("DB connected but empty. Seeding Mock Users...");
            setUsers(MOCK_USERS);
         } else {
-           setUsers(dbUsers.map(mapProfileFromDB));
+           setUsers(usersRes.data.map(mapProfileFromDB));
         }
 
         // 2. CUSTOMERS
-        const { data: dbCustomers, error: custError } = await supabase.from('customers').select('*');
-        if (!dbCustomers || dbCustomers.length === 0) {
+        if (customersRes.data) {
+           // We map what we got. Note that files/auditPhotos will be empty/undefined here initially
+           // ideally we would fetch them on demand when clicking a customer
+           setCustomers(customersRes.data.map(mapCustomerFromDB));
+        } else if (customersRes.error) {
            setCustomers(MOCK_CUSTOMERS);
-        } else {
-           setCustomers(dbCustomers.map(mapCustomerFromDB));
         }
 
         // 3. INVENTORY
-        const { data: dbInventory, error: invError } = await supabase.from('inventory').select('*');
-        if (!dbInventory || dbInventory.length === 0) {
+        if (inventoryRes.data) {
+           setInventory(inventoryRes.data.map(mapInventoryFromDB));
+        } else if (inventoryRes.error) {
            setInventory(MOCK_INVENTORY);
-        } else {
-           setInventory(dbInventory.map(mapInventoryFromDB));
         }
 
         // 4. INSTALLATIONS
-        const { data: dbInstallations, error: instError } = await supabase.from('installations').select('*');
-        if (!dbInstallations || dbInstallations.length === 0) {
+        if (installationsRes.data) {
+           setInstallations(installationsRes.data.map(mapInstallationFromDB));
+        } else if (installationsRes.error) {
            setInstallations(MOCK_INSTALLATIONS);
-        } else {
-           setInstallations(dbInstallations.map(mapInstallationFromDB));
         }
 
         // 5. MESSAGES
-        const { data: dbMessages, error: msgError } = await supabase.from('messages').select('*').or(`from_id.eq.${currentUser.id},to_id.eq.${currentUser.id}`);
-        if (dbMessages && dbMessages.length > 0) {
-           setMessages(dbMessages.map(mapMessageFromDB));
+        if (messagesRes.data && messagesRes.data.length > 0) {
+           setMessages(messagesRes.data.map(mapMessageFromDB));
         } else {
            setMessages(MOCK_MESSAGES);
         }
 
         // 6. SYSTEM SETTINGS - FETCH FROM DB
-        const { data: settingsData, error: settingsError } = await supabase.from('system_settings').select('*').single();
-        if (settingsData) {
+        if (settingsRes.data) {
            setSystemSettings({
-              cat2MarkupType: settingsData.cat2_markup_type || 'PERCENT',
-              cat2MarkupValue: settingsData.cat2_markup_value || 5
+              cat2MarkupType: settingsRes.data.cat2_markup_type || 'PERCENT',
+              cat2MarkupValue: settingsRes.data.cat2_markup_value || 5
            });
         } else {
            const savedSettings = localStorage.getItem('systemSettings');
@@ -390,6 +409,10 @@ const App: React.FC = () => {
         setTasks(MOCK_TASKS);
         setMessages(MOCK_MESSAGES);
         showNotification("Błąd bazy danych. Pracujesz na danych lokalnych.", 'info');
+      } finally {
+        // TURN OFF LOADING SCREEN when all data is ready (or error happened)
+        // Add a small artificial delay for better UX (smooth transition)
+        setTimeout(() => setIsInitialLoading(false), 800);
       }
     };
     
@@ -401,6 +424,8 @@ const App: React.FC = () => {
   };
 
   const handleLogin = async (fallbackUser?: User) => {
+    setIsInitialLoading(true); // Start loading immediately
+    
     if (fallbackUser) {
        setCurrentUser(fallbackUser);
        return;
@@ -623,59 +648,105 @@ const App: React.FC = () => {
     const existingInstallation = installations.find(i => i.customerId === custId);
     
     if (!existingInstallation && acceptedOffer) {
-       const calcState = acceptedOffer.calculatorState;
-       
-       const panelModel = inventory.find(i => i.id === calcState.panelId)?.name || 'Standardowy Panel';
-       const inverterModel = inventory.find(i => i.id === calcState.inverterId)?.name || 'Standardowy Falownik';
-       const storageModel = calcState.storageId ? (inventory.find(i => i.id === calcState.storageId)?.name || 'Magazyn') : undefined;
-       const storageSize = calcState.storageId ? (inventory.find(i => i.id === calcState.storageId)?.capacity || 0) * calcState.storageCount : undefined;
+       let newInstallation: Partial<Installation> | null = null;
 
-       const totalCommission = (acceptedOffer.appliedMarkup || 0) + (acceptedOffer.personalMarkup || 0);
+       if (acceptedOffer.type === 'HEATING' || (acceptedOffer.type as any) === 'HEAT_PUMP') {
+           const calcState = acceptedOffer.calculatorState as HeatingCalculatorState;
+           const device = inventory.find(i => i.id === calcState.selectedDeviceId);
+           const totalCommission = (acceptedOffer.appliedMarkup || 0) + (acceptedOffer.personalMarkup || 0);
 
-       const newInstallation: Partial<Installation> = {
-          customerId: custId,
-          address: customer.address,
-          systemSizeKw: acceptedOffer.calculatorState.consumption ? acceptedOffer.calculatorState.consumption / 1000 : 0, 
-          status: InstallationStatus.AUDIT,
-          price: acceptedOffer.finalPrice,
-          paidAmount: 0,
-          panelModel,
-          inverterModel,
-          storageModel,
-          storageSizeKw: storageSize,
-          mountingSystem: calcState.installationType === 'ROOF' ? `Dach ${calcState.roofMaterial}` : 'Grunt',
-          trenchLength: calcState.trenchLength,
-          commissionValue: totalCommission 
-       };
+           newInstallation = {
+              customerId: custId,
+              address: customer.address,
+              systemSizeKw: 0, 
+              status: InstallationStatus.AUDIT,
+              type: 'HEATING', // Explicitly Set Type
+              price: acceptedOffer.finalPrice,
+              paidAmount: 0,
+              commissionValue: totalCommission,
+              notes: `System Grzewczy: ${calcState.systemType === 'HEAT_PUMP' ? 'Pompa Ciepła' : 'Kocioł na Pellet'}. Urządzenie: ${device?.name || 'Brak'}`
+           };
 
-       const tempId = crypto.randomUUID();
-       const createdInst = { 
-          ...newInstallation, 
-          id: tempId, 
-          paymentHistory: [], 
-          commissionHistory: [] 
-       } as Installation;
+       } else if (acceptedOffer.type === 'ME') {
+           // ENERGY STORAGE ONLY
+           const calcState = acceptedOffer.calculatorState as StorageCalculatorState;
+           const storage = inventory.find(i => i.id === calcState.selectedStorageId);
+           const totalCommission = (acceptedOffer.appliedMarkup || 0) + (acceptedOffer.personalMarkup || 0);
+           const capacity = (storage?.capacity || 0) * calcState.storageCount;
+
+           newInstallation = {
+              customerId: custId,
+              address: customer.address,
+              systemSizeKw: 0,
+              status: InstallationStatus.AUDIT,
+              type: 'ME',
+              price: acceptedOffer.finalPrice,
+              paidAmount: 0,
+              storageModel: storage?.name,
+              storageSizeKw: capacity,
+              commissionValue: totalCommission,
+              notes: `Magazyn Energii: ${storage?.name} x ${calcState.storageCount}. Pojemność: ${capacity} kWh.`
+           };
+
+       } else {
+           // Default to PV or PV_STORAGE
+           const calcState = acceptedOffer.calculatorState as CalculatorState;
        
-       setInstallations(prev => [...prev, createdInst]);
-       
-       try {
-          const dbPayload = mapInstallationToDB(newInstallation);
-          const { data, error } = await supabase.from('installations').insert([dbPayload]).select().single();
-          if (data) {
-             setInstallations(prev => prev.map(i => i.id === tempId ? mapInstallationFromDB(data) : i));
-          }
-       } catch (e) { console.error(e) }
-       
-       const notif: AppNotification = {
-          id: Date.now().toString(),
-          category: 'SALES',
-          title: 'Nowa Sprzedaż',
-          message: `Klient ${customer.name} zaakceptował ofertę na kwotę ${acceptedOffer.finalPrice.toLocaleString()} PLN.`,
-          date: new Date().toISOString(),
-          read: false,
-          linkTo: { view: 'INSTALLATIONS' }
-       };
-       setNotifications(prev => [notif, ...prev]);
+           const panelModel = inventory.find(i => i.id === calcState.panelId)?.name || 'Standardowy Panel';
+           const inverterModel = inventory.find(i => i.id === calcState.inverterId)?.name || 'Standardowy Falownik';
+           const storageModel = calcState.storageId ? (inventory.find(i => i.id === calcState.storageId)?.name || 'Magazyn') : undefined;
+           const storageSize = calcState.storageId ? (inventory.find(i => i.id === calcState.storageId)?.capacity || 0) * calcState.storageCount : undefined;
+
+           const totalCommission = (acceptedOffer.appliedMarkup || 0) + (acceptedOffer.personalMarkup || 0);
+
+           newInstallation = {
+              customerId: custId,
+              address: customer.address,
+              systemSizeKw: calcState.consumption ? calcState.consumption / 1000 : 0, 
+              status: InstallationStatus.AUDIT,
+              type: acceptedOffer.type === 'PV_STORAGE' ? 'PV_STORAGE' : 'PV', // Explicit Type
+              price: acceptedOffer.finalPrice,
+              paidAmount: 0,
+              panelModel,
+              inverterModel,
+              storageModel,
+              storageSizeKw: storageSize,
+              mountingSystem: calcState.installationType === 'ROOF' ? `Dach ${calcState.roofMaterial}` : 'Grunt',
+              trenchLength: calcState.trenchLength,
+              commissionValue: totalCommission 
+           };
+       }
+
+       if (newInstallation) {
+           const tempId = crypto.randomUUID();
+           const createdInst = { 
+              ...newInstallation, 
+              id: tempId, 
+              paymentHistory: [], 
+              commissionHistory: [] 
+           } as Installation;
+           
+           setInstallations(prev => [...prev, createdInst]);
+           
+           try {
+              const dbPayload = mapInstallationToDB(newInstallation);
+              const { data, error } = await supabase.from('installations').insert([dbPayload]).select().single();
+              if (data) {
+                 setInstallations(prev => prev.map(i => i.id === tempId ? mapInstallationFromDB(data) : i));
+              }
+           } catch (e) { console.error(e) }
+           
+           const notif: AppNotification = {
+              id: Date.now().toString(),
+              category: 'SALES',
+              title: 'Nowa Sprzedaż',
+              message: `Klient ${customer.name} zaakceptował ofertę na kwotę ${acceptedOffer.finalPrice.toLocaleString()} PLN.`,
+              date: new Date().toISOString(),
+              read: false,
+              linkTo: { view: 'INSTALLATIONS' }
+           };
+           setNotifications(prev => [notif, ...prev]);
+       }
     } 
  };
 
@@ -697,287 +768,345 @@ const App: React.FC = () => {
   };
 
   if (!currentUser) {
-    return <Login onLogin={handleLogin} onLoginStart={() => {}} />;
+    return <Login onLogin={handleLogin} onLoginStart={() => setIsInitialLoading(true)} />;
   }
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-900">
-      <Sidebar 
-        currentView={view} 
-        onChangeView={setView} 
-        currentUser={currentUser} 
-        onLogout={handleLogout}
-        isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
-        unreadNotifications={notifications.filter(n => !n.read).length}
-      />
+    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-900 relative">
       
-      <main className="flex-1 flex flex-col h-full overflow-hidden relative w-full">
-        {view === 'DASHBOARD' && (
-          <Dashboard 
-            installations={installations}
-            inventory={inventory}
-            customers={customers}
-            onChangeView={setView}
-            currentUser={currentUser}
-            tasks={tasks}
-            onAddTask={(t) => setTasks([...tasks, t])}
-            messages={messages}
-            users={users} // Pass users for messaging lookup
-            onSendMessage={handleSendMessage}
-            onUpdateSettings={handleUpdateUserSettings}
-            onNavigateToCustomer={(id) => { setSelectedCustomerId(id); setView('CUSTOMERS'); }}
-            notifications={notifications}
-            onMarkAsRead={handleMarkAsRead}
-            onMarkAsUnread={(id) => setNotifications(prev => prev.map(n => n.id === id ? {...n, read: false} : n))}
-            onMarkAllAsRead={() => setNotifications(prev => prev.map(n => ({...n, read: true, date: n.category === 'STOCK' ? new Date().toISOString() : n.date})))}
-            onDeleteNotification={(id) => setNotifications(prev => prev.filter(n => n.id !== id))}
-            onNavigate={(v, id) => { setView(v); if(id && v === 'CUSTOMERS') setSelectedCustomerId(id); }}
-          />
-        )}
+      {/* --- NEW: Loading Overlay (Modernized) --- */}
+      {isInitialLoading && (
+        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-slate-900/40 backdrop-blur-md animate-fade-in transition-opacity duration-500">
+           
+           {/* Background Pulse Effect */}
+           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/20 rounded-full blur-[100px] animate-pulse"></div>
 
-        {view === 'NOTIFICATIONS' && (
-           <NotificationsCenter 
+           <div className="relative z-10 text-center flex flex-col items-center p-8 rounded-3xl bg-white/10 border border-white/10 shadow-2xl backdrop-blur-xl">
+              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 shadow-xl mb-6 animate-bounce-slow">
+                 <Sun className="w-10 h-10 text-white" />
+              </div>
+              
+              <h1 className="text-3xl font-bold text-white mb-2 tracking-tight drop-shadow-sm">
+                 Witaj, {currentUser.name.split(' ')[0]}!
+              </h1>
+              <p className="text-slate-200 text-base mb-8 font-medium">
+                 Przygotowujemy Twój pulpit...
+              </p>
+              
+              <div className="flex items-center space-x-3 bg-black/20 px-5 py-2.5 rounded-full border border-white/5">
+                 <Loader2 className="w-5 h-5 text-amber-400 animate-spin" />
+                 <span className="text-sm font-semibold text-white tracking-wide">Ładowanie CRM</span>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* Main App Content - Blurred only when loading */}
+      <div className={`flex flex-1 w-full h-full transition-all duration-700 ${isInitialLoading ? 'filter blur-sm scale-[0.99] opacity-80 pointer-events-none' : 'filter-none scale-100 opacity-100'}`}>
+        <Sidebar 
+          currentView={view} 
+          onChangeView={setView} 
+          currentUser={currentUser} 
+          onLogout={handleLogout}
+          isOpen={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
+          unreadNotifications={notifications.filter(n => !n.read).length}
+        />
+        
+        <main className="flex-1 flex flex-col h-full overflow-hidden relative w-full">
+          {view === 'DASHBOARD' && (
+            <Dashboard 
+              installations={installations}
+              inventory={inventory}
+              customers={customers}
+              onChangeView={setView}
+              currentUser={currentUser}
+              tasks={tasks}
+              onAddTask={(t) => setTasks([...tasks, t])}
+              messages={messages}
+              users={users} // Pass users for messaging lookup
+              onSendMessage={handleSendMessage}
+              onUpdateSettings={handleUpdateUserSettings}
+              onNavigateToCustomer={(id) => { setSelectedCustomerId(id); setView('CUSTOMERS'); }}
               notifications={notifications}
               onMarkAsRead={handleMarkAsRead}
               onMarkAsUnread={(id) => setNotifications(prev => prev.map(n => n.id === id ? {...n, read: false} : n))}
               onMarkAllAsRead={() => setNotifications(prev => prev.map(n => ({...n, read: true, date: n.category === 'STOCK' ? new Date().toISOString() : n.date})))}
               onDeleteNotification={(id) => setNotifications(prev => prev.filter(n => n.id !== id))}
               onNavigate={(v, id) => { setView(v); if(id && v === 'CUSTOMERS') setSelectedCustomerId(id); }}
+            />
+          )}
+
+          {/* ... Other Views (Notifications, Customers, etc.) remain unchanged ... */}
+          {view === 'NOTIFICATIONS' && (
+             <NotificationsCenter 
+                notifications={notifications}
+                onMarkAsRead={handleMarkAsRead}
+                onMarkAsUnread={(id) => setNotifications(prev => prev.map(n => n.id === id ? {...n, read: false} : n))}
+                onMarkAllAsRead={() => setNotifications(prev => prev.map(n => ({...n, read: true, date: n.category === 'STOCK' ? new Date().toISOString() : n.date})))}
+                onDeleteNotification={(id) => setNotifications(prev => prev.filter(n => n.id !== id))}
+                onNavigate={(v, id) => { setView(v); if(id && v === 'CUSTOMERS') setSelectedCustomerId(id); }}
+                currentUser={currentUser}
+             />
+          )}
+          
+          {view === 'CUSTOMERS' && (
+            <Customers 
+              customers={customers}
+              installations={installations}
+              users={users}
+              inventory={inventory}
               currentUser={currentUser}
-           />
-        )}
-        
-        {view === 'CUSTOMERS' && (
-          <Customers 
-            customers={customers}
-            installations={installations}
-            users={users}
-            inventory={inventory} // PASS INVENTORY TO CUSTOMERS
-            currentUser={currentUser}
-            onUpdateCustomer={async (c) => {
-               setCustomers(prev => prev.map(cust => cust.id === c.id ? c : cust));
-               // USE STANDARDIZED MAPPING
-               await supabase.from('customers').update(mapCustomerToDB(c)).eq('id', c.id);
-            }}
-            onUpdateInstallation={async (i) => {
-               // NOTIFICATION LOGIC
-               const oldInst = installations.find(inst => inst.id === i.id);
-               
-               // Check if status changed from NEW to something else (e.g. AUDIT)
-               if (oldInst && oldInst.status === InstallationStatus.NEW && i.status !== InstallationStatus.NEW) {
-                  const customerName = customers.find(c => c.id === i.customerId)?.name || 'Klient';
-                  
-                  // Add notification
-                  const newNotif: AppNotification = {
-                     id: Date.now().toString(),
-                     category: 'INSTALLATION',
-                     title: 'Zmiana Statusu Instalacji',
-                     message: `Klient ${customerName} przeszedł z etapu "${oldInst.status}" do "${i.status}".`,
-                     date: new Date().toISOString(),
-                     read: false,
-                     linkTo: { view: 'CUSTOMERS', id: i.customerId }
-                  };
-                  
-                  setNotifications(prev => [newNotif, ...prev]);
-                  showNotification(`Status klienta ${customerName} zmieniony na ${i.status}`, 'success');
-               }
+              onUpdateCustomer={async (c) => {
+                 setCustomers(prev => prev.map(cust => cust.id === c.id ? c : cust));
+                 await supabase.from('customers').update(mapCustomerToDB(c)).eq('id', c.id);
+              }}
+              onUpdateInstallation={async (i) => {
+                 const oldInst = installations.find(inst => inst.id === i.id);
+                 if (oldInst && oldInst.status === InstallationStatus.NEW && i.status !== InstallationStatus.NEW) {
+                    const customerName = customers.find(c => c.id === i.customerId)?.name || 'Klient';
+                    const newNotif: AppNotification = {
+                       id: Date.now().toString(),
+                       category: 'INSTALLATION',
+                       title: 'Zmiana Statusu Instalacji',
+                       message: `Klient ${customerName} przeszedł z etapu "${oldInst.status}" do "${i.status}".`,
+                       date: new Date().toISOString(),
+                       read: false,
+                       linkTo: { view: 'CUSTOMERS', id: i.customerId }
+                    };
+                    setNotifications(prev => [newNotif, ...prev]);
+                    showNotification(`Status klienta ${customerName} zmieniony na ${i.status}`, 'success');
+                 }
+                 if (i.status === InstallationStatus.PROJECT && !i.dateScheduled) {
+                    const customerName = customers.find(c => c.id === i.customerId)?.name || 'Klient';
+                    const newNotif: AppNotification = {
+                       id: Date.now().toString() + Math.random(),
+                       category: 'INSTALLATION',
+                       title: 'Brak Terminu Montażu',
+                       message: `Klient ${customerName} jest w fazie PROJEKT, ale nie ma ustalonej daty montażu. Ustal termin!`,
+                       date: new Date().toISOString(),
+                       read: false,
+                       linkTo: { view: 'CUSTOMERS', id: i.customerId }
+                    };
+                    setNotifications(prev => [newNotif, ...prev]);
+                 }
+                 setInstallations(prev => prev.map(inst => inst.id === i.id ? i : inst));
+                 await supabase.from('installations').update(mapInstallationToDB(i)).eq('id', i.id);
+              }}
+              onAddPayment={async (instId, p) => {
+                 const targetInst = installations.find(inst => inst.id === instId);
+                 if (!targetInst) return;
+                 const updatedInst = { 
+                    ...targetInst, 
+                    paidAmount: targetInst.paidAmount + p.amount, 
+                    paymentHistory: [...(targetInst.paymentHistory || []), p] 
+                 };
+                 setInstallations(prev => prev.map(inst => inst.id === instId ? updatedInst : inst));
+                 try {
+                    const dbPayload = mapInstallationToDB(updatedInst);
+                    const { error } = await supabase.from('installations').update(dbPayload).eq('id', instId);
+                    if (error) throw error;
+                 } catch(e) {
+                    console.error("DB Error adding payment", e);
+                    showNotification("Błąd zapisu wpłaty w bazie.", "error");
+                 }
+              }}
+              onRemovePayment={async (instId, pId) => {
+                 const targetInst = installations.find(inst => inst.id === instId);
+                 if (!targetInst) return;
+                 const payment = targetInst.paymentHistory?.find(p => p.id === pId);
+                 if (!payment) return;
+                 const updatedInst = { 
+                    ...targetInst, 
+                    paidAmount: targetInst.paidAmount - payment.amount, 
+                    paymentHistory: targetInst.paymentHistory?.filter(p => p.id !== pId) 
+                 };
+                 setInstallations(prev => prev.map(inst => inst.id === instId ? updatedInst : inst));
+                 try {
+                    const dbPayload = mapInstallationToDB(updatedInst);
+                    const { error } = await supabase.from('installations').update(dbPayload).eq('id', instId);
+                    if (error) throw error;
+                 } catch(e) {
+                    console.error("DB Error removing payment", e);
+                    showNotification("Błąd zapisu usunięcia wpłaty.", "error");
+                 }
+              }}
+              onAddCommissionPayout={async (instId, p) => {
+                 const targetInst = installations.find(inst => inst.id === instId);
+                 if (!targetInst) return;
+                 const updatedInst = { 
+                    ...targetInst, 
+                    commissionHistory: [...(targetInst.commissionHistory || []), p] 
+                 };
+                 setInstallations(prev => prev.map(inst => inst.id === instId ? updatedInst : inst));
+                 try {
+                    const dbPayload = mapInstallationToDB(updatedInst);
+                    const { error } = await supabase.from('installations').update(dbPayload).eq('id', instId);
+                    if (error) throw error;
+                 } catch(e) {
+                    console.error("DB Error adding commission", e);
+                    showNotification("Błąd zapisu prowizji.", "error");
+                 }
+              }}
+              onRemoveCommissionPayout={async (instId, pId) => {
+                 const targetInst = installations.find(inst => inst.id === instId);
+                 if (!targetInst) return;
+                 const updatedInst = { 
+                    ...targetInst, 
+                    commissionHistory: targetInst.commissionHistory?.filter(p => p.id !== pId) 
+                 };
+                 setInstallations(prev => prev.map(inst => inst.id === instId ? updatedInst : inst));
+                 try {
+                    const dbPayload = mapInstallationToDB(updatedInst);
+                    const { error } = await supabase.from('installations').update(dbPayload).eq('id', instId);
+                    if (error) throw error;
+                 } catch(e) {
+                    console.error("DB Error removing commission", e);
+                    showNotification("Błąd usuwania prowizji.", "error");
+                 }
+              }}
+              onShowNotification={showNotification}
+              selectedCustomerId={selectedCustomerId}
+              setSelectedCustomerId={setSelectedCustomerId}
+              onEditOffer={(offer) => {
+                 setCalculatorState(offer.calculatorState);
+                 if (offer.type === 'HEATING' || 'systemType' in offer.calculatorState) {
+                     setCurrentTool('CALC_HEAT');
+                 } else if (offer.type === 'ME' || 'selectedStorageId' in offer.calculatorState) {
+                     setCurrentTool('CALC_ME');
+                 } else {
+                     setCurrentTool('CALC_PV');
+                 }
+                 setView('APPLICATIONS');
+              }}
+              onAcceptOffer={handleAcceptOffer}
+              onAddCustomer={handleAddCustomer}
+            />
+          )}
 
-               // NEW LOGIC: Trigger Admin Notification if PROJECT but NO DATE
-               if (i.status === InstallationStatus.PROJECT && !i.dateScheduled) {
-                  const customerName = customers.find(c => c.id === i.customerId)?.name || 'Klient';
-                  
-                  // Avoid duplicate if one exists for this customer/category recently (simplified here)
-                  const newNotif: AppNotification = {
-                     id: Date.now().toString() + Math.random(),
-                     category: 'INSTALLATION',
-                     title: 'Brak Terminu Montażu',
-                     message: `Klient ${customerName} jest w fazie PROJEKT, ale nie ma ustalonej daty montażu. Ustal termin!`,
-                     date: new Date().toISOString(),
-                     read: false,
-                     linkTo: { view: 'CUSTOMERS', id: i.customerId }
-                  };
-                  setNotifications(prev => [newNotif, ...prev]);
-               }
-
-               setInstallations(prev => prev.map(inst => inst.id === i.id ? i : inst));
-               await supabase.from('installations').update(mapInstallationToDB(i)).eq('id', i.id);
-            }}
-            onAddPayment={(instId, p) => {
-               setInstallations(prev => prev.map(inst => {
-                  if (inst.id === instId) {
-                     return { ...inst, paidAmount: inst.paidAmount + p.amount, paymentHistory: [...(inst.paymentHistory || []), p] };
-                  }
-                  return inst;
-               }));
-            }}
-            onRemovePayment={(instId, pId) => {
-               setInstallations(prev => prev.map(inst => {
-                  if (inst.id === instId) {
-                     const payment = inst.paymentHistory?.find(p => p.id === pId);
-                     if (!payment) return inst;
-                     return { ...inst, paidAmount: inst.paidAmount - payment.amount, paymentHistory: inst.paymentHistory?.filter(p => p.id !== pId) };
-                  }
-                  return inst;
-               }));
-            }}
-            onAddCommissionPayout={(instId, p) => {
-               setInstallations(prev => prev.map(inst => {
-                  if (inst.id === instId) {
-                     return { ...inst, commissionHistory: [...(inst.commissionHistory || []), p] };
-                  }
-                  return inst;
-               }));
-            }}
-            onRemoveCommissionPayout={(instId, pId) => {
-               setInstallations(prev => prev.map(inst => {
-                  if (inst.id === instId) {
-                     return { ...inst, commissionHistory: inst.commissionHistory?.filter(p => p.id !== pId) };
-                  }
-                  return inst;
-               }));
-            }}
-            onShowNotification={showNotification}
-            selectedCustomerId={selectedCustomerId}
-            setSelectedCustomerId={setSelectedCustomerId}
-            onEditOffer={(offer) => {
-               setCalculatorState(offer.calculatorState);
-               setCurrentTool('CALC_PV');
-               setView('APPLICATIONS');
-            }}
-            onAcceptOffer={handleAcceptOffer}
-            onAddCustomer={handleAddCustomer}
-          />
-        )}
-
-        {/* ... Rest of the tabs remain similar ... */}
-        {view === 'INSTALLATIONS' && (
-          <Installations 
-            installations={installations}
-            customers={customers}
-            users={users}
-            onNavigateToCustomer={(id) => { setSelectedCustomerId(id); setView('CUSTOMERS'); }}
-            onUpdateInstallation={async (i) => {
-               setInstallations(prev => prev.map(inst => inst.id === i.id ? i : inst));
-               await supabase.from('installations').update(mapInstallationToDB(i)).eq('id', i.id);
-            }}
-            currentUserRole={currentUser.role}
-          />
-        )}
-
-        {view === 'INSTALLATION_CALENDAR' && (
-           <InstallationCalendar 
+          {view === 'INSTALLATIONS' && (
+            <Installations 
               installations={installations}
               customers={customers}
               users={users}
               onNavigateToCustomer={(id) => { setSelectedCustomerId(id); setView('CUSTOMERS'); }}
-              currentUser={currentUser}
-           />
-        )}
-
-        {view === 'INVENTORY' && (
-          <Inventory 
-            inventory={inventory}
-            onUpdateItem={handleUpdateInventoryItem}
-            onAddItem={handleAddInventoryItem}
-            onDeleteItem={handleDeleteInventoryItem}
-            currentUser={currentUser}
-          />
-        )}
-
-        {view === 'APPLICATIONS' && (
-          <Applications 
-             customers={customers}
-             inventory={inventory}
-             onSaveOffer={async (offer, isNewClient, newClientData) => {
-                let custId = offer.calculatorState.clientId;
-                if (isNewClient && newClientData) {
-                   const newCust: Customer = {
-                      id: crypto.randomUUID(),
-                      name: newClientData.name,
-                      email: newClientData.email,
-                      phone: newClientData.phone,
-                      address: newClientData.address,
-                      repId: currentUser.id,
-                      notes: '',
-                      offers: [offer],
-                      files: [],
-                      auditPhotos: [],
-                      notesHistory: []
-                   };
-                   
-                   // Optimistic Update
-                   setCustomers([...customers, newCust]);
-                   custId = newCust.id;
-                   
-                   // DB Update
-                   try { 
-                      // USE STANDARDIZED MAPPING
-                      const dbPayload = mapCustomerToDB(newCust);
-                      const { error } = await supabase.from('customers').insert([dbPayload]);
-                      if (error) throw error;
-                   } catch(e){
-                      console.error("DB Save error", e);
-                      showNotification("Błąd zapisu w bazie danych", "error");
-                   }
-                } else {
-                   setCustomers(prev => prev.map(c => c.id === custId ? { ...c, offers: [...(c.offers || []), offer] } : c));
-                   try { 
-                      const c = customers.find(x => x.id === custId);
-                      if (c) {
-                         const updatedOffers = [...(c.offers || []), offer];
-                         await supabase.from('customers').update({ offers: updatedOffers }).eq('id', custId);
-                      }
-                   } catch(e){}
-                }
-                showNotification('Oferta została zapisana', 'success');
-             }}
-             initialState={calculatorState}
-             clearInitialState={() => setCalculatorState(null)}
-             currentUser={currentUser}
-             systemSettings={systemSettings}
-             currentTool={currentTool}
-             onChangeTool={setCurrentTool}
-          />
-        )}
-
-        {view === 'EMPLOYEES' && (
-           <Employees 
-              users={users}
-              onAddUser={handleAddUser}
-              onUpdateUser={handleUpdateUser}
-              onDeleteUser={handleDeleteUser}
-              systemSettings={systemSettings}
-              onUpdateSystemSettings={handleUpdateSystemSettings}
-           />
-        )}
-        
-        {view === 'ANNOUNCEMENTS' && (
-           <AnnouncementCreator 
-              onSave={(ann) => {
-                 const newAnn = { ...ann, id: Date.now().toString(), createdAt: new Date().toISOString(), createdBy: currentUser.id };
-                 setAnnouncements([newAnn, ...announcements]);
-                 showNotification("Komunikat opublikowany", 'success');
-                 setView('DASHBOARD');
+              onUpdateInstallation={async (i) => {
+                 setInstallations(prev => prev.map(inst => inst.id === i.id ? i : inst));
+                 await supabase.from('installations').update(mapInstallationToDB(i)).eq('id', i.id);
               }}
-           />
-        )}
+              currentUserRole={currentUser.role}
+            />
+          )}
 
-        {notification && (
-          <Notification 
-            message={notification.message} 
-            type={notification.type} 
-            onClose={() => setNotification(null)} 
-          />
-        )}
-        
-        {pendingAnnouncement && (
-           <AnnouncementModal 
-              announcement={pendingAnnouncement} 
-              onAccept={() => setPendingAnnouncement(null)}
-           />
-        )}
-      </main>
+          {view === 'INSTALLATION_CALENDAR' && (
+             <InstallationCalendar 
+                installations={installations}
+                customers={customers}
+                users={users}
+                onNavigateToCustomer={(id) => { setSelectedCustomerId(id); setView('CUSTOMERS'); }}
+                currentUser={currentUser}
+             />
+          )}
+
+          {view === 'INVENTORY' && (
+            <Inventory 
+              inventory={inventory}
+              onUpdateItem={handleUpdateInventoryItem}
+              onAddItem={handleAddInventoryItem}
+              onDeleteItem={handleDeleteInventoryItem}
+              currentUser={currentUser}
+            />
+          )}
+
+          {view === 'APPLICATIONS' && (
+            <Applications 
+               customers={customers}
+               inventory={inventory}
+               onSaveOffer={async (offer, isNewClient, newClientData) => {
+                  let custId = offer.calculatorState.clientId;
+                  if (isNewClient && newClientData) {
+                     const newCust: Customer = {
+                        id: crypto.randomUUID(),
+                        name: newClientData.name,
+                        email: newClientData.email,
+                        phone: newClientData.phone,
+                        address: newClientData.address,
+                        repId: currentUser.id,
+                        notes: '',
+                        offers: [offer],
+                        files: [],
+                        auditPhotos: [],
+                        notesHistory: []
+                     };
+                     setCustomers([...customers, newCust]);
+                     custId = newCust.id;
+                     try { 
+                        const dbPayload = mapCustomerToDB(newCust);
+                        const { error } = await supabase.from('customers').insert([dbPayload]);
+                        if (error) throw error;
+                     } catch(e){
+                        console.error("DB Save error", e);
+                        showNotification("Błąd zapisu w bazie danych", "error");
+                     }
+                  } else {
+                     setCustomers(prev => prev.map(c => c.id === custId ? { ...c, offers: [...(c.offers || []), offer] } : c));
+                     try { 
+                        const c = customers.find(x => x.id === custId);
+                        if (c) {
+                           const updatedOffers = [...(c.offers || []), offer];
+                           await supabase.from('customers').update({ offers: updatedOffers }).eq('id', custId);
+                        }
+                     } catch(e){}
+                  }
+                  showNotification('Oferta została zapisana', 'success');
+               }}
+               initialState={calculatorState}
+               clearInitialState={() => setCalculatorState(null)}
+               currentUser={currentUser}
+               systemSettings={systemSettings}
+               currentTool={currentTool}
+               onChangeTool={setCurrentTool}
+            />
+          )}
+
+          {view === 'EMPLOYEES' && (
+             <Employees 
+                users={users}
+                onAddUser={handleAddUser}
+                onUpdateUser={handleUpdateUser}
+                onDeleteUser={handleDeleteUser}
+                systemSettings={systemSettings}
+                onUpdateSystemSettings={handleUpdateSystemSettings}
+             />
+          )}
+          
+          {view === 'ANNOUNCEMENTS' && (
+             <AnnouncementCreator 
+                onSave={(ann) => {
+                   const newAnn = { ...ann, id: Date.now().toString(), createdAt: new Date().toISOString(), createdBy: currentUser.id };
+                   setAnnouncements([newAnn, ...announcements]);
+                   showNotification("Komunikat opublikowany", 'success');
+                   setView('DASHBOARD');
+                }}
+             />
+          )}
+
+          {notification && (
+            <Notification 
+              message={notification.message} 
+              type={notification.type} 
+              onClose={() => setNotification(null)} 
+            />
+          )}
+          
+          {pendingAnnouncement && (
+             <AnnouncementModal 
+                announcement={pendingAnnouncement} 
+                onAccept={() => setPendingAnnouncement(null)}
+             />
+          )}
+        </main>
+      </div>
     </div>
   );
 };

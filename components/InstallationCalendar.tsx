@@ -1,7 +1,6 @@
-
 import React, { useState, useMemo } from 'react';
 import { Installation, Customer, User, UserRole, InstallationStatus } from '../types';
-import { ChevronLeft, ChevronRight, Filter, Calendar as CalendarIcon, MapPin, Zap, User as UserIcon, Hammer, Battery, RotateCcw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, Calendar as CalendarIcon, MapPin, Zap, User as UserIcon, Hammer, Battery, RotateCcw, Flame } from 'lucide-react';
 
 interface InstallationCalendarProps {
   installations: Installation[];
@@ -10,6 +9,16 @@ interface InstallationCalendarProps {
   onNavigateToCustomer: (customerId: string) => void;
   currentUser: User;
 }
+
+const getInstallationType = (inst: Installation): 'PV' | 'PVME' | 'ME' | 'HEAT' => {
+   const hasPV = inst.systemSizeKw > 0;
+   const hasStorage = inst.storageSizeKw && inst.storageSizeKw > 0;
+   
+   if (hasPV && hasStorage) return 'PVME';
+   if (hasPV) return 'PV';
+   if (hasStorage) return 'ME';
+   return 'HEAT';
+};
 
 export const InstallationCalendar: React.FC<InstallationCalendarProps> = ({
   installations,
@@ -113,10 +122,18 @@ export const InstallationCalendar: React.FC<InstallationCalendarProps> = ({
             {dayInstalls.map(inst => {
               const customer = customers.find(c => c.id === inst.customerId);
               const team = users.find(u => u.id === inst.assignedTeam);
-              const statusColor = 
-                inst.status === InstallationStatus.COMPLETED ? 'bg-green-100 border-green-200 text-green-800' :
-                inst.status === InstallationStatus.GRID_CONNECTION ? 'bg-purple-100 border-purple-200 text-purple-800' :
-                'bg-white border-blue-200 text-slate-700 hover:border-blue-400 hover:shadow-md';
+              const type = getInstallationType(inst);
+              let statusColor = 'bg-white border-blue-200 text-slate-700 hover:border-blue-400 hover:shadow-md';
+              
+              // Apply Type Colors (Override basic status)
+              if (inst.status === InstallationStatus.COMPLETED) {
+                 statusColor = 'bg-green-100 border-green-200 text-green-800 opacity-70';
+              } else {
+                 if (type === 'HEAT') statusColor = 'bg-red-50 border-red-200 text-red-900';
+                 else if (type === 'PVME') statusColor = 'bg-indigo-50 border-indigo-200 text-indigo-900';
+                 else if (type === 'ME') statusColor = 'bg-emerald-50 border-emerald-200 text-emerald-900';
+                 else statusColor = 'bg-amber-50 border-amber-200 text-amber-900'; // PV
+              }
 
               return (
                 <div 
@@ -127,10 +144,16 @@ export const InstallationCalendar: React.FC<InstallationCalendarProps> = ({
                   <div className="flex justify-between items-start mb-1">
                      <span className="font-bold truncate max-w-[100px]">{customer?.name || 'Klient'}</span>
                      <div className="flex flex-col items-end gap-0.5">
-                        <span className="font-bold text-[10px] flex items-center bg-white/50 px-1 rounded border border-black/5">
-                           <Zap className="w-2.5 h-2.5 mr-0.5 text-amber-500" />
-                           {inst.systemSizeKw}
-                        </span>
+                        {type === 'HEAT' ? (
+                           <span className="font-bold text-[10px] flex items-center">
+                              <Flame className="w-2.5 h-2.5 mr-0.5" /> HEAT
+                           </span>
+                        ) : (
+                           <span className="font-bold text-[10px] flex items-center bg-white/50 px-1 rounded border border-black/5">
+                              <Zap className="w-2.5 h-2.5 mr-0.5 text-amber-500" />
+                              {inst.systemSizeKw}
+                           </span>
+                        )}
                         {inst.storageSizeKw && inst.storageSizeKw > 0 && (
                            <span className="font-bold text-[10px] flex items-center bg-green-50 px-1 rounded border border-green-200 text-green-700">
                               <Battery className="w-2.5 h-2.5 mr-0.5" />
@@ -144,7 +167,7 @@ export const InstallationCalendar: React.FC<InstallationCalendarProps> = ({
                      <span className="truncate">{inst.address?.split(',')[0]}</span>
                   </div>
                   {!isInstaller && selectedTeamId === 'ALL' && team && (
-                     <div className="flex items-center text-[9px] font-bold text-slate-500 mt-1 pt-1 border-t border-black/5">
+                     <div className="flex items-center text-[9px] font-bold opacity-70 mt-1 pt-1 border-t border-black/5">
                         <Hammer className="w-2.5 h-2.5 mr-1" />
                         {team.name}
                      </div>

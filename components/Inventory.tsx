@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { InventoryItem, ProductCategory, User, UserRole } from '../types';
-import { AlertTriangle, Package, Brain, Edit2, X, Save, Plus, Filter, Search, ArrowUpDown, Database, ShieldCheck, Sun, Trash2, Check, Zap, GitMerge, Thermometer, Wind } from 'lucide-react';
+import { AlertTriangle, Package, Brain, Edit2, X, Save, Plus, Filter, Search, ArrowUpDown, Database, ShieldCheck, Sun, Trash2, Check, Zap, GitMerge, Thermometer, Wind, Upload, Image as ImageIcon } from 'lucide-react';
 import { analyzeInventory } from '../services/geminiService';
 
 interface InventoryProps {
@@ -16,6 +16,37 @@ interface InventoryProps {
 type SortField = 'name' | 'price' | 'quantity' | 'dateAdded';
 type SortOrder = 'asc' | 'desc';
 
+// Helper to compress image
+const compressImage = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 800; // Limit width for inventory thumbs
+        let width = img.width;
+        let height = img.height;
+
+        if (width > MAX_WIDTH) {
+          height *= MAX_WIDTH / width;
+          width = MAX_WIDTH;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.7)); 
+      };
+      img.onerror = (error) => reject(error);
+    };
+    reader.onerror = (error) => reject(error);
+  });
+};
+
 export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, onAddItem, onDeleteItem, onLoadSampleData, currentUser }) => {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -29,6 +60,8 @@ export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, o
 
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [deletingItem, setDeletingItem] = useState<InventoryItem | null>(null); // New state for custom delete modal
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Installers have restricted access
   const isInstaller = currentUser.role === UserRole.INSTALLER;
@@ -107,6 +140,17 @@ export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, o
           onDeleteItem(deletingItem.id);
           setDeletingItem(null);
       }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0] && editingItem) {
+      try {
+        const base64 = await compressImage(e.target.files[0]);
+        setEditingItem({ ...editingItem, url: base64 });
+      } catch (err) {
+        alert("Błąd przetwarzania zdjęcia");
+      }
+    }
   };
 
   const filteredInventory = inventory.filter(item => {
@@ -271,7 +315,17 @@ export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, o
                       {filteredInventory.map(item => (
                         <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
                            <td className="p-4">
-                              <p className="font-bold text-slate-800 text-sm">{item.name}</p>
+                              <div className="flex items-center">
+                                 {/* Image Thumbnail */}
+                                 {item.url ? (
+                                    <img src={item.url} alt={item.name} className="w-10 h-10 rounded-lg object-cover mr-3 border border-slate-200 shadow-sm" />
+                                 ) : (
+                                    <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center mr-3 border border-slate-200 text-slate-400">
+                                       <Package className="w-5 h-5" />
+                                    </div>
+                                 )}
+                                 <p className="font-bold text-slate-800 text-sm">{item.name}</p>
+                              </div>
                            </td>
                            <td className="p-4">
                               <div className="flex flex-wrap gap-1">
@@ -407,6 +461,45 @@ export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, o
 
                {/* 2. Scrollable Body */}
                <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-4">
+                  
+                  {/* Image Upload Section */}
+                  {editingItem.category !== ProductCategory.SERVICE && (
+                     <div className="mb-4">
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Zdjęcie Produktu</label>
+                        <div className="flex items-center gap-4">
+                           {editingItem.url ? (
+                              <div className="relative group">
+                                 <img src={editingItem.url} alt="Podgląd" className="w-24 h-24 rounded-xl object-cover border border-slate-200 shadow-sm" />
+                                 <button 
+                                    onClick={() => setEditingItem({...editingItem, url: ''})}
+                                    className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                                 >
+                                    <X className="w-3 h-3" />
+                                 </button>
+                              </div>
+                           ) : (
+                              <div 
+                                 onClick={() => fileInputRef.current?.click()}
+                                 className="w-24 h-24 rounded-xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 cursor-pointer hover:border-blue-500 hover:text-blue-500 hover:bg-blue-50 transition-all"
+                              >
+                                 <Upload className="w-6 h-6 mb-1" />
+                                 <span className="text-[10px] font-bold">Wgraj</span>
+                              </div>
+                           )}
+                           <div className="flex-1">
+                              <p className="text-xs text-slate-500 mb-2">Dodaj zdjęcie, aby łatwiej identyfikować produkt w magazynie i ofertach.</p>
+                              <input 
+                                 type="file" 
+                                 ref={fileInputRef} 
+                                 className="hidden" 
+                                 accept="image/*" 
+                                 onChange={handleImageUpload}
+                              />
+                           </div>
+                        </div>
+                     </div>
+                  )}
+
                   <div>
                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nazwa</label>
                      <input 

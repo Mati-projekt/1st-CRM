@@ -3,11 +3,13 @@ export enum InstallationStatus {
   NEW = 'Nowy',
   AUDIT = 'Audyt',
   CONTRACT = 'Umowa',
+  CONTRACT_RESCUE = 'Umowa do uratowania', // New
   PROJECT = 'Projekt',
   INSTALLATION = 'Montaż',
   GRID_CONNECTION = 'Zgłoszenie OSD',
   GRANT_APPLICATION = 'Zgłoszenie do dotacji',
-  COMPLETED = 'Zakończone'
+  COMPLETED = 'Zakończone',
+  DROP = 'Spadek' // New
 }
 
 export enum ProductCategory {
@@ -37,9 +39,12 @@ export interface SalesSettings {
   marginType?: 'PERCENT' | 'FIXED';
   marginPV: number;      // Fixed amount in PLN or Percent
   marginHeat: number;    // Fixed amount in PLN or Percent
+  marginPellet?: number; // Fixed amount in PLN for Pellet Boilers
   marginStorage: number; // Fixed amount in PLN or Percent
   marginHybrid?: number; // New: Fixed amount for PV + Storage combo
   showRoiChart?: boolean; // Toggle for ROI Chart visibility
+  trenchCostPerMeter?: number; // New: Cost per meter for ground installation trench
+  trenchFreeMeters?: number; // New: Number of meters free of charge
 }
 
 export interface SystemSettings {
@@ -93,6 +98,7 @@ export interface UploadedFile {
   dateUploaded: string;
   url?: string;
   category?: string; // Added for Audit Categories
+  description?: string; // Added for Audit Notes
 }
 
 export type TariffType = 'G11' | 'G12' | 'G12w' | 'C11' | 'C12a' | 'C12b';
@@ -154,12 +160,15 @@ export interface CalculatorState {
   subsidyMojPradStorage: boolean; 
   subsidyCzystePowietrze: boolean;
   taxRelief: 'NONE' | '12' | '32'; 
+  
+  // Discount Fields
+  discountAmount?: number;
+  discountAuthor?: string;
 }
 
 export interface HeatingCalculatorState {
   step: number;
-  systemType: 'HEAT_PUMP' | 'GAS' | 'PELLET' | 'OTHER';
-  mode: 'QUICK_QUOTE' | 'AUDIT';
+  systemType: 'HEAT_PUMP' | 'PELLET';
   
   // Client (shared with PV logic structure for consistency)
   clientId: string | 'ANON';
@@ -171,67 +180,60 @@ export interface HeatingCalculatorState {
     email: string;
   };
 
-  // Building Data
-  address: string;
-  lat?: number;
-  lon?: number;
-  avgTemp?: number;
+  // Step 2: Device
+  powerDemand: number;
+  bivalentPoint: number;
+  selectedDeviceId: string;
+
+  // Step 3: Accessories & Services
+  selectedAccessoryIds: string[];
+
+  // Step 4: Financials & Fuel Analysis
+  taxRelief: 'NONE' | '12' | '32';
+  subsidyProgram: 'NONE' | 'CZYSTE_POWIETRZE' | 'MOJE_CIEPLO';
   
-  buildingType: 'NEW' | 'OLD' | 'RETROFIT' | 'FLAT_ROOF' | 'PITCHED_ROOF';
-  yearBuilt?: number;
-  area?: number;
+  // Fuel Analysis
+  currentFuel?: string;
+  fuelConsumption?: number; // tons or m3
+  fuelCostPerUnit?: number; // PLN per ton/m3
+
+  // Czyste Powietrze Settings
+  cpLevel: 'BASIC' | 'ELEVATED' | 'HIGHEST';
+  cpIncludeCoCwu: boolean;
+
+  // Discount Fields
+  discountAmount?: number;
+  discountAuthor?: string;
+}
+
+export interface StorageCalculatorState {
+  step: number;
   
-  // Dimensions for advanced calculation
-  dimensions: {
-     A: number;
-     B: number;
-     C: number;
-     D: number;
+  // Client
+  clientId: string | 'ANON';
+  isNewClient: boolean;
+  newClientData: {
+    name: string;
+    address: string;
+    phone: string;
+    email: string;
   };
+
+  // Step 2: Mounting & Existing
+  existingPvPower: number; // kWp
+  installationType: InstallationType;
+  trenchLength: number; // For ground mounting
   
-  hasBasement: boolean;
-  ventilation: 'GRAVITY' | 'MECHANICAL' | 'RECUPERATION';
-  
-  // Thermal details
-  heatedArea: number; // m2
-  roomHeight: number; // m
-  
-  // Insulation
-  wallMaterial: string;
-  wallThickness: number; // mm
-  wallInsulation: string;
-  wallInsulationThickness: number; // mm
-  
-  atticInsulation: string;
-  atticInsulationThickness: number; // mm
-  
-  floorInsulation: string;
-  floorInsulationThickness: number; // mm
-  
-  // Windows & Doors
-  glazingType: 'OLD_SINGLE' | 'OLD_DOUBLE' | 'NEW_DOUBLE' | 'NEW_TRIPLE';
-  glazingArea: number; // m2
-  
-  doors: { type: string, width: number, height: number, count: number }[];
-  
-  // Heating System
-  emitterType: 'RADIATORS' | 'UNDERFLOOR' | 'MIXED' | 'RAD_LOW' | 'RAD_HIGH';
-  targetTemp: number; // 21 C
-  
-  // CWU
-  hasCWU: boolean;
-  occupants: number;
-  dailyWaterUsage: number; // L per person
-  startWaterTemp: number;
-  endWaterTemp: number; // 45-55 C
-  
-  // Results / Selection
-  calculatedHeatingPower: number; // kW
-  selectedProducer: string;
-  selectedHeatPumpId: string;
-  selectedTankId: string;
-  selectedBufferId: string;
-  selectedServices: string[];
+  // Step 3: Selection
+  selectedStorageId: string;
+  storageCount: number;
+  additionalInverterId?: string; // Optional retrofit inverter
+
+  // Step 4: Financials
+  subsidyMojPradStorage: boolean;
+  taxRelief: 'NONE' | '12' | '32';
+  discountAmount?: number;
+  discountAuthor?: string;
 }
 
 export interface Offer {
@@ -239,8 +241,8 @@ export interface Offer {
   name: string;
   dateCreated: string;
   finalPrice: number;
-  type?: 'PV' | 'HEAT_PUMP'; // Added type discriminator
-  calculatorState: CalculatorState;
+  type?: 'PV' | 'PV_STORAGE' | 'HEATING' | 'ME'; // Updated types
+  calculatorState: CalculatorState | HeatingCalculatorState | StorageCalculatorState;
   status?: 'DRAFT' | 'ACCEPTED';
   appliedMarkup?: number;
   personalMarkup?: number; 
@@ -309,6 +311,7 @@ export interface Installation {
   address: string;
   systemSizeKw: number;
   status: InstallationStatus;
+  type?: 'PV' | 'PV_STORAGE' | 'HEATING' | 'ME'; // Added Explicit Type
   dateScheduled?: string;
   assignedTeam?: string;
   notes?: string;

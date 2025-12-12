@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Customer, Installation, User, InventoryItem, Offer, CustomerNote, UserRole, PaymentEntry, UploadedFile, InstallationStatus, NotificationType } from '../types';
+import { Customer, Installation, User, InventoryItem, Offer, CustomerNote, UserRole, PaymentEntry, UploadedFile, InstallationStatus, NotificationType, CalculatorState, HeatingCalculatorState } from '../types';
 import { 
   Search, Plus, User as UserIcon, Phone, Mail, MapPin, FileText, 
   Wrench, DollarSign, Calendar, Clock, Send, MessageSquare, 
   Trash2, Edit2, Save, X, CheckCircle, AlertTriangle, 
   History as HistoryIcon, Paperclip, ExternalLink, Download, 
-  MoreVertical, FilePlus, ChevronRight, PenTool, Image as ImageIcon, Briefcase
+  MoreVertical, FilePlus, ChevronRight, PenTool, Image as ImageIcon, Briefcase, CreditCard, Camera, ClipboardCheck, Video, FileCheck, ToggleLeft, ToggleRight, Info, Home, Zap, Battery, Cpu, ArrowDownToLine, Shovel, Eye, ZoomIn, ZoomOut, MessageSquarePlus, Maximize, Minus, Check, Loader2
 } from 'lucide-react';
 
 interface CustomersProps {
@@ -29,6 +29,21 @@ interface CustomersProps {
   onAddCustomer: (data: { name: string, email: string, phone: string, address: string }) => void;
 }
 
+// Updated 11 Steps Audit List
+const AUDIT_STEPS = [
+   { id: 1, label: '1. Film przedstawiający drogę instalacji ME', type: 'VIDEO' },
+   { id: 2, label: '2. Zdjęcie rozdzielnicy głównej z widocznymi wartościami', type: 'PHOTO' },
+   { id: 3, label: '3. Zdjęcie licznika', type: 'PHOTO' },
+   { id: 4, label: '4. Zdjęcie miejsca montażu falownika i ME', type: 'PHOTO' },
+   { id: 5, label: '5. Zdjęcie miejsca montażu paneli (dach/grunt)', type: 'PHOTO' },
+   { id: 6, label: '6. Zdjęcia trasy kablowej/przekopu', type: 'PHOTO' },
+   { id: 7, label: '7. Zdjęcie/skan faktury za energię (PPE, moc, taryfa)', type: 'doc' },
+   { id: 8, label: '8. Zdjęcie istniejącej instalacji (panele/falowniki)', type: 'PHOTO' },
+   { id: 9, label: '9. Zdjęcie miejsca wpięcia starej instalacji', type: 'PHOTO' },
+   { id: 10, label: '10. Zdjęcia tabliczek znamionowych (panele/falownik)', type: 'PHOTO' },
+   { id: 11, label: '11. Zdjęcie/skan umowy dot. poprzedniej instalacji', type: 'doc' },
+];
+
 export const Customers: React.FC<CustomersProps> = ({
   customers,
   installations,
@@ -48,7 +63,8 @@ export const Customers: React.FC<CustomersProps> = ({
   onAcceptOffer,
   onAddCustomer
 }) => {
-  const [activeTab, setActiveTab] = useState<'details' | 'offers' | 'installations' | 'notes' | 'files'>('details');
+  // Updated Tab Order
+  const [activeTab, setActiveTab] = useState<'details' | 'offers' | 'installations' | 'finances' | 'audit' | 'notes' | 'files'>('details');
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [newCustomerData, setNewCustomerData] = useState({ name: '', email: '', phone: '', address: '' });
@@ -58,6 +74,32 @@ export const Customers: React.FC<CustomersProps> = ({
   
   // Notes State
   const [newNoteContent, setNewNoteContent] = useState('');
+
+  // Payment State
+  const [financeMode, setFinanceMode] = useState<'CLIENT' | 'COMMISSION'>('CLIENT');
+  const [newPaymentAmount, setNewPaymentAmount] = useState('');
+  const [newPaymentDate, setNewPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newPaymentDesc, setNewPaymentDesc] = useState('');
+  const [paymentAttachment, setPaymentAttachment] = useState<string | null>(null);
+  const [commissionAttachment, setCommissionAttachment] = useState<string | null>(null);
+
+  // Installation UI State
+  const [saveSuccessField, setSaveSuccessField] = useState<string | null>(null);
+
+  // Deleting State for UX - Specific File ID and Modal State
+  const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
+  const [photoToDelete, setPhotoToDelete] = useState<UploadedFile | null>(null);
+
+  // Refs
+  const auditFileInputRef = useRef<HTMLInputElement>(null);
+  const genericFileInputRef = useRef<HTMLInputElement>(null); // NEW: For "Pliki" tab
+  const paymentFileInputRef = useRef<HTMLInputElement>(null);
+  const commissionFileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Audit UI State
+  const [activeAuditStepId, setActiveAuditStepId] = useState<number | null>(1); // Default to first step
+  const [zoomedImage, setZoomedImage] = useState<string | null>(null);
+  const [zoomScale, setZoomScale] = useState(1);
 
   // Derived Data
   const filteredCustomers = useMemo(() => {
@@ -75,6 +117,33 @@ export const Customers: React.FC<CustomersProps> = ({
   const customerInstallation = useMemo(() => 
     installations.find(i => i.customerId === selectedCustomerId), 
   [installations, selectedCustomerId]);
+
+  // Derive Contract Info
+  const acceptedOffer = useMemo(() => 
+     selectedCustomer?.offers?.find(o => o.status === 'ACCEPTED'),
+  [selectedCustomer]);
+
+  const contractType = useMemo(() => {
+     if (!acceptedOffer) return 'Brak aktywnej umowy';
+     
+     // FIX: Check for both HEATING (new) and HEAT_PUMP (legacy)
+     if (acceptedOffer.type === 'HEATING' || (acceptedOffer.type as any) === 'HEAT_PUMP') {
+        return 'System Grzewczy';
+     }
+     
+     // PV Check - Only check calculatorState if it's a PV offer or undefined type (legacy)
+     if (acceptedOffer.type === 'PV_STORAGE') return 'Fotowoltaika + Magazyn (PVME)';
+     if (acceptedOffer.type === 'PV') return 'Fotowoltaika (PV)';
+
+     // Legacy fallback based on calculator state
+     if (acceptedOffer.calculatorState && 'storageId' in acceptedOffer.calculatorState) {
+        const state = acceptedOffer.calculatorState as CalculatorState;
+        if (state.storageId) return 'Fotowoltaika + Magazyn (PVME)';
+        return 'Fotowoltaika (PV)';
+     }
+     
+     return 'Fotowoltaika (PV)';
+  }, [acceptedOffer]);
 
   // Sync editForm with selectedCustomer
   useEffect(() => {
@@ -117,6 +186,285 @@ export const Customers: React.FC<CustomersProps> = ({
     onShowNotification('Notatka dodana', 'success');
   };
 
+  const handleAddPaymentSubmit = () => {
+     if (!customerInstallation || !newPaymentAmount) return;
+     
+     const amount = parseFloat(newPaymentAmount);
+     if (isNaN(amount) || amount <= 0) {
+        onShowNotification('Podaj poprawną kwotę', 'error');
+        return;
+     }
+
+     const attachBase64 = financeMode === 'CLIENT' ? paymentAttachment : commissionAttachment;
+     
+     // Determine extension
+     let fileName = 'Potwierdzenie.jpg';
+     let fileType = 'image/jpeg';
+     if (attachBase64) {
+        if (attachBase64.startsWith('data:application/pdf')) {
+           fileName = 'Potwierdzenie.pdf';
+           fileType = 'application/pdf';
+        }
+     }
+
+     // Combine Date and Time for correct sorting
+     const now = new Date();
+     const timePart = now.toTimeString().split(' ')[0]; // HH:MM:SS
+     const fullDateTime = `${newPaymentDate}T${timePart}`;
+
+     const payment: PaymentEntry = {
+        id: Date.now().toString(),
+        date: fullDateTime,
+        amount: amount,
+        recordedBy: currentUser.name,
+        comment: newPaymentDesc,
+        // Attach file if exists
+        attachments: attachBase64 ? [{
+           id: Date.now().toString(),
+           name: fileName, 
+           type: fileType,
+           dateUploaded: new Date().toISOString(),
+           url: attachBase64
+        }] : []
+     };
+
+     if (financeMode === 'CLIENT') {
+        onAddPayment(customerInstallation.id, payment);
+        setPaymentAttachment(null);
+     } else {
+        onAddCommissionPayout(customerInstallation.id, payment);
+        setCommissionAttachment(null);
+     }
+
+     setNewPaymentAmount('');
+     setNewPaymentDesc('');
+     onShowNotification(financeMode === 'CLIENT' ? 'Wpłata klienta dodana' : 'Wypłata prowizji dodana', 'success');
+  };
+
+  // Improved File Processor
+  const handleProcessFile = (file: File): Promise<{ url: string, type: string }> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const result = event.target?.result as string;
+        
+        if (file.type === 'application/pdf') {
+           resolve({ url: result, type: 'application/pdf' });
+        } else {
+           const img = new Image();
+           img.src = result;
+           img.onload = () => {
+             const canvas = document.createElement('canvas');
+             const MAX_WIDTH = 1600; 
+             let width = img.width;
+             let height = img.height;
+     
+             if (width > MAX_WIDTH) {
+               height *= MAX_WIDTH / width;
+               width = MAX_WIDTH;
+             }
+     
+             canvas.width = width;
+             canvas.height = height;
+             const ctx = canvas.getContext('2d');
+             ctx?.drawImage(img, 0, 0, width, height);
+             resolve({ url: canvas.toDataURL('image/jpeg', 0.85), type: 'image/jpeg' }); 
+           };
+           img.onerror = (error) => reject(error);
+        }
+      };
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  const handleAuditPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0] && editForm && activeAuditStepId) {
+      try {
+        const file = e.target.files[0];
+        const processed = await handleProcessFile(file);
+        
+        const step = AUDIT_STEPS.find(s => s.id === activeAuditStepId);
+
+        const newPhoto: UploadedFile = {
+           id: Date.now().toString(),
+           name: `${step?.label.split('.')[0] || 'Krok'} - ${file.name}`,
+           type: processed.type,
+           dateUploaded: new Date().toISOString(),
+           url: processed.url,
+           category: activeAuditStepId.toString() // Use Step ID as Category
+        };
+
+        const updatedCustomer = {
+           ...editForm,
+           auditPhotos: [...(editForm.auditPhotos || []), newPhoto]
+        };
+        setEditForm(updatedCustomer);
+        await onUpdateCustomer(updatedCustomer);
+        onShowNotification('Plik dodany do audytu', 'success');
+      } catch (err) {
+        onShowNotification('Błąd przetwarzania pliku', 'error');
+      }
+    }
+  };
+
+  // --- NEW: General File Upload Handler ---
+  const handleGenericFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0] && editForm) {
+      try {
+        const file = e.target.files[0];
+        const processed = await handleProcessFile(file);
+        
+        const newFile: UploadedFile = {
+           id: Date.now().toString(),
+           name: file.name,
+           type: processed.type,
+           dateUploaded: new Date().toISOString(),
+           url: processed.url,
+           description: ''
+        };
+
+        const updatedCustomer = {
+           ...editForm,
+           files: [...(editForm.files || []), newFile]
+        };
+        setEditForm(updatedCustomer);
+        await onUpdateCustomer(updatedCustomer);
+        onShowNotification('Plik dodany', 'success');
+      } catch (err) {
+        onShowNotification('Błąd przetwarzania pliku', 'error');
+      }
+    }
+  };
+
+  const handleUpdateAuditFileNote = async (fileId: string, note: string) => {
+     if (!editForm) return;
+     
+     const updatedFiles = editForm.auditPhotos?.map(f => {
+        if (f.id === fileId) {
+           return { ...f, description: note };
+        }
+        return f;
+     });
+     
+     const updatedCustomer = { ...editForm, auditPhotos: updatedFiles };
+     setEditForm(updatedCustomer);
+  };
+
+  // --- NEW: Update Note for General Files ---
+  const handleUpdateGenericFileNote = async (fileId: string, note: string) => {
+     if (!editForm) return;
+     
+     const updatedFiles = editForm.files?.map(f => {
+        if (f.id === fileId) {
+           return { ...f, description: note };
+        }
+        return f;
+     });
+     
+     const updatedCustomer = { ...editForm, files: updatedFiles };
+     setEditForm(updatedCustomer);
+  };
+
+  const saveAuditChanges = async () => {
+     if (editForm) {
+        await onUpdateCustomer(editForm);
+        onShowNotification('Zapisano zmiany w audycie', 'success');
+     }
+  };
+
+  // --- NEW: Save Changes for General Files ---
+  const saveGenericFileChanges = async () => {
+     if (editForm) {
+        await onUpdateCustomer(editForm);
+        onShowNotification('Zapisano zmiany w plikach', 'success');
+     }
+  };
+
+  const handlePaymentAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+     if (e.target.files && e.target.files[0]) {
+        try {
+           const processed = await handleProcessFile(e.target.files[0]);
+           if (financeMode === 'CLIENT') {
+              setPaymentAttachment(processed.url);
+           } else {
+              setCommissionAttachment(processed.url);
+           }
+           onShowNotification('Załącznik dodany (Gotowy do zapisu)', 'success');
+        } catch (e) {
+           onShowNotification('Błąd dodawania załącznika', 'error');
+        }
+     }
+  };
+
+  const handleDownloadFile = (file: UploadedFile) => {
+     if (!file.url) return;
+     const link = document.createElement('a');
+     link.href = file.url;
+     link.download = file.name || 'download';
+     document.body.appendChild(link);
+     link.click();
+     document.body.removeChild(link);
+  };
+
+  // --- DELETE LOGIC (CUSTOM MODAL) ---
+  const handleInitiateDelete = (e: React.MouseEvent, photo: UploadedFile) => {
+     e.preventDefault();
+     e.stopPropagation();
+     setPhotoToDelete(photo);
+  };
+
+  const confirmDeletePhoto = async () => {
+     if (!editForm || !photoToDelete) return;
+     
+     const photoId = photoToDelete.id;
+     setDeletingFileId(photoId);
+     setPhotoToDelete(null); // Close modal
+
+     // 1. Calculate new state based on ACTIVE TAB
+     let updatedCustomer = { ...editForm };
+
+     if (activeTab === 'audit') {
+        const currentPhotos = editForm.auditPhotos || [];
+        const updatedPhotos = currentPhotos.filter(p => String(p.id) !== String(photoId));
+        updatedCustomer.auditPhotos = updatedPhotos;
+     } else if (activeTab === 'files') {
+        const currentFiles = editForm.files || [];
+        const updatedFiles = currentFiles.filter(p => String(p.id) !== String(photoId));
+        updatedCustomer.files = updatedFiles;
+     } else {
+        // Fallback safety (should not happen given buttons are only in these tabs)
+        setDeletingFileId(null);
+        return;
+     }
+
+     // 2. Update Local State Immediately
+     setEditForm(updatedCustomer);
+
+     // 3. Update Database
+     try {
+        await onUpdateCustomer(updatedCustomer);
+        onShowNotification('Plik usunięty', 'info');
+     } catch (err: any) {
+        console.error("Delete failed", err);
+        onShowNotification('Błąd zapisu w bazie danych', 'error');
+     } finally {
+        setDeletingFileId(null);
+     }
+  };
+
+  const handleZoom = (url: string) => {
+     setZoomedImage(url);
+     setZoomScale(1);
+  };
+
+  // Helper for installation fields saving feedback
+  const handleUpdateInstallationField = async (inst: Installation, field: keyof Installation, value: any, label: string) => {
+     await onUpdateInstallation({ ...inst, [field]: value });
+     setSaveSuccessField(label);
+     setTimeout(() => setSaveSuccessField(null), 3000);
+  };
+
   const getRoleConfig = (role: UserRole) => {
     switch (role) {
       case UserRole.ADMIN: return { color: 'bg-purple-100 text-purple-700 border-purple-200', iconColor: 'bg-purple-600', label: 'Admin' };
@@ -139,6 +487,8 @@ export const Customers: React.FC<CustomersProps> = ({
     setNewCustomerData({ name: '', email: '', phone: '', address: '' });
     setShowAddModal(false);
   };
+
+  const installers = users.filter(u => u.role === UserRole.INSTALLER);
 
   return (
     <div className="h-full flex flex-col md:flex-row bg-slate-50 overflow-hidden">
@@ -235,7 +585,6 @@ export const Customers: React.FC<CustomersProps> = ({
                            <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500 mt-1">
                               <span className="flex items-center"><Mail className="w-3.5 h-3.5 mr-1.5" />{editForm.email}</span>
                               <span className="flex items-center"><Phone className="w-3.5 h-3.5 mr-1.5" />{editForm.phone}</span>
-                              <span className="flex items-center"><Briefcase className="w-3.5 h-3.5 mr-1.5" />{getRepName(editForm.repId)}</span>
                            </div>
                         </div>
                      </div>
@@ -252,6 +601,8 @@ export const Customers: React.FC<CustomersProps> = ({
                         { id: 'details', label: 'Szczegóły', icon: UserIcon },
                         { id: 'offers', label: 'Oferty', icon: FileText },
                         { id: 'installations', label: 'Instalacja', icon: Wrench },
+                        { id: 'finances', label: 'Finanse', icon: DollarSign },
+                        { id: 'audit', label: 'Audyt', icon: ClipboardCheck },
                         { id: 'notes', label: 'Notatki', icon: MessageSquare },
                         { id: 'files', label: 'Pliki', icon: Paperclip }
                      ].map(tab => (
@@ -277,6 +628,35 @@ export const Customers: React.FC<CustomersProps> = ({
                   {/* TAB: DETAILS */}
                   {activeTab === 'details' && (
                      <div className="max-w-4xl space-y-6 animate-fade-in">
+                        {/* Rep & Contract Info */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                           <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl flex items-center shadow-sm">
+                              <div className="bg-indigo-100 p-3 rounded-full mr-4 text-indigo-600">
+                                 <Briefcase className="w-6 h-6" />
+                              </div>
+                              <div>
+                                 <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Opiekun Handlowy</p>
+                                 <p className="text-lg font-bold text-indigo-900">{getRepName(editForm.repId)}</p>
+                              </div>
+                           </div>
+                           
+                           <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl flex items-center shadow-sm">
+                              <div className="bg-emerald-100 p-3 rounded-full mr-4 text-emerald-600">
+                                 <FileCheck className="w-6 h-6" />
+                              </div>
+                              <div>
+                                 <p className="text-xs font-bold text-emerald-500 uppercase tracking-wider">Typ Umowy</p>
+                                 <p className="text-lg font-bold text-emerald-900">{contractType}</p>
+                                 {acceptedOffer && (
+                                    <div className="flex items-center text-xs text-emerald-600 mt-1 font-medium">
+                                       <CheckCircle className="w-3 h-3 mr-1" />
+                                       Zaakceptowano: {new Date(acceptedOffer.dateCreated).toLocaleDateString()}
+                                    </div>
+                                 )}
+                              </div>
+                           </div>
+                        </div>
+
                         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                            <h3 className="font-bold text-lg text-slate-800 mb-4 flex items-center">
                               <UserIcon className="w-5 h-5 mr-2 text-blue-500" /> Dane Kontaktowe
@@ -319,7 +699,7 @@ export const Customers: React.FC<CustomersProps> = ({
                                  />
                               </div>
                               <div className="md:col-span-2">
-                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Opiekun Handlowy</label>
+                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Opiekun Handlowy (Zmiana)</label>
                                  <select 
                                    value={editForm.repId || ''} 
                                    onChange={e => setEditForm({...editForm, repId: e.target.value})}
@@ -335,8 +715,8 @@ export const Customers: React.FC<CustomersProps> = ({
                         </div>
                      </div>
                   )}
-                  
-                  {/* TAB: OFFERS */}
+
+                  {/* ... OFFERS TAB ... */}
                   {activeTab === 'offers' && (
                      <div className="max-w-4xl space-y-6 animate-fade-in">
                         {editForm.offers && editForm.offers.length > 0 ? (
@@ -385,7 +765,7 @@ export const Customers: React.FC<CustomersProps> = ({
                      </div>
                   )}
 
-                  {/* TAB: INSTALLATION */}
+                  {/* ... INSTALLATIONS TAB ... */}
                   {activeTab === 'installations' && (
                      <div className="max-w-4xl space-y-6 animate-fade-in">
                         {customerInstallation ? (
@@ -395,49 +775,175 @@ export const Customers: React.FC<CustomersProps> = ({
                                     <h3 className="text-xl font-bold text-slate-800 flex items-center">
                                        <Wrench className="w-5 h-5 mr-2 text-amber-500" /> Instalacja #{customerInstallation.id.slice(0,6)}
                                     </h3>
-                                    <p className="text-sm text-slate-500 mt-1">Status: <span className="font-bold text-blue-600 uppercase">{customerInstallation.status}</span></p>
+                                    <div className="mt-2 flex items-center gap-2">
+                                       <select 
+                                          value={customerInstallation.status}
+                                          onChange={(e) => onUpdateInstallation({ ...customerInstallation, status: e.target.value as InstallationStatus })}
+                                          className="text-sm font-bold bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1.5 rounded-lg outline-none cursor-pointer hover:bg-blue-100"
+                                       >
+                                          {Object.values(InstallationStatus).map(s => (
+                                             <option key={s} value={s}>{s}</option>
+                                          ))}
+                                       </select>
+                                    </div>
                                  </div>
                                  <div className="text-right">
-                                    <p className="text-xs text-slate-400 font-bold uppercase">Moc Systemu</p>
-                                    <p className="text-2xl font-bold text-slate-800">{customerInstallation.systemSizeKw} kWp</p>
+                                    <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold border border-slate-200 uppercase tracking-wide">
+                                       {contractType}
+                                    </span>
                                  </div>
                               </div>
                               
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                                    <h4 className="font-bold text-slate-700 mb-3 text-sm uppercase">Szczegóły Techniczne</h4>
-                                    <div className="space-y-2 text-sm">
-                                       <div className="flex justify-between"><span className="text-slate-500">Panele:</span> <span className="font-medium">{customerInstallation.panelModel || '-'}</span></div>
-                                       <div className="flex justify-between"><span className="text-slate-500">Falownik:</span> <span className="font-medium">{customerInstallation.inverterModel || '-'}</span></div>
-                                       <div className="flex justify-between"><span className="text-slate-500">Magazyn:</span> <span className="font-medium">{customerInstallation.storageModel || 'Brak'} ({customerInstallation.storageSizeKw || 0} kWh)</span></div>
-                                       <div className="flex justify-between"><span className="text-slate-500">Montaż:</span> <span className="font-medium">{customerInstallation.mountingSystem || '-'}</span></div>
-                                    </div>
+                                 {/* Technical Specs - Enhanced from Offer */}
+                                 <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 shadow-sm">
+                                    <h4 className="font-bold text-slate-700 mb-4 text-sm uppercase flex items-center">
+                                       <Info className="w-4 h-4 mr-2 text-blue-500" /> Specyfikacja Sprzętowa (Oferta)
+                                    </h4>
+                                    
+                                    {contractType.includes('Fotowoltaika') ? (
+                                       <div className="space-y-3 text-sm">
+                                          {/* Core Components */}
+                                          <div className="bg-white p-3 rounded-lg border border-slate-200 mb-3">
+                                             <div className="flex justify-between border-b border-slate-100 pb-2 mb-2"><span className="text-slate-500">Moc Instalacji PV:</span> <span className="font-bold text-amber-600">{customerInstallation.systemSizeKw} kWp</span></div>
+                                             
+                                             {/* Panels + Count */}
+                                             <div className="flex justify-between border-b border-slate-100 pb-2 mb-2">
+                                                <span className="text-slate-500">Panele:</span> 
+                                                <div className="text-right w-1/2">
+                                                   <span className="font-medium text-slate-800 block">{customerInstallation.panelModel || '-'}</span>
+                                                   {acceptedOffer && acceptedOffer.calculatorState && (
+                                                      <span className="text-xs text-slate-500 font-bold">
+                                                         {(acceptedOffer.calculatorState as CalculatorState).panelCount} szt.
+                                                      </span>
+                                                   )}
+                                                </div>
+                                             </div>
+
+                                             <div className="flex justify-between"><span className="text-slate-500">Falownik:</span> <span className="font-medium text-slate-800 text-right w-1/2">{customerInstallation.inverterModel || '-'}</span></div>
+                                          </div>
+
+                                          {/* Calculator Specifics (if available via acceptedOffer) */}
+                                          {acceptedOffer && acceptedOffer.calculatorState && (
+                                             <div className="bg-white p-3 rounded-lg border border-slate-200 space-y-2">
+                                                {/* Type casting for safety */}
+                                                {(() => {
+                                                   const state = acceptedOffer.calculatorState as CalculatorState;
+                                                   return (
+                                                      <>
+                                                         <div className="flex justify-between"><span className="text-slate-500">Orientacja Paneli:</span> <span className="font-bold text-slate-800">{state.orientation === 'SOUTH' ? 'Południe' : 'Wschód-Zachód'}</span></div>
+                                                         
+                                                         {state.installationType === 'ROOF' ? (
+                                                            <>
+                                                               <div className="flex justify-between"><span className="text-slate-500">Rodzaj Dachu:</span> <span className="font-medium">{state.roofSlope === 'FLAT' ? 'Płaski' : 'Skośny'}</span></div>
+                                                               <div className="flex justify-between"><span className="text-slate-500">Pokrycie:</span> <span className="font-medium">{state.roofMaterial}</span></div>
+                                                            </>
+                                                         ) : (
+                                                            <div className="flex justify-between"><span className="text-slate-500">Dł. Przekopu:</span> <span className="font-medium">{state.trenchLength} mb</span></div>
+                                                         )}
+
+                                                         {(state.hasEMS || state.hasUPS) && (
+                                                            <div className="mt-2 pt-2 border-t border-slate-100 flex gap-2">
+                                                               {state.hasEMS && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-1 rounded font-bold flex items-center"><Cpu className="w-3 h-3 mr-1"/> EMS</span>}
+                                                               {state.hasUPS && <span className="text-[10px] bg-red-100 text-red-700 px-2 py-1 rounded font-bold flex items-center"><Battery className="w-3 h-3 mr-1"/> UPS</span>}
+                                                            </div>
+                                                         )}
+                                                      </>
+                                                   );
+                                                })()}
+                                             </div>
+                                          )}
+
+                                          {contractType.includes('ME') && (
+                                             <div className="flex justify-between bg-green-50 p-3 rounded-lg border border-green-200">
+                                                <span className="text-green-700 font-bold flex items-center"><Battery className="w-4 h-4 mr-2"/> Magazyn Energii:</span> 
+                                                <div className="text-right">
+                                                   <span className="font-bold text-green-900 block">{customerInstallation.storageModel || 'Tak'} ({customerInstallation.storageSizeKw || 0} kWh)</span>
+                                                   {acceptedOffer && acceptedOffer.calculatorState && (
+                                                      <span className="text-xs text-green-600 font-bold">
+                                                         {(acceptedOffer.calculatorState as CalculatorState).storageCount} szt.
+                                                      </span>
+                                                   )}
+                                                </div>
+                                             </div>
+                                          )}
+                                       </div>
+                                    ) : (
+                                       // Heat Pump Layout
+                                       <div className="space-y-3 text-sm">
+                                          <div className="bg-orange-50 p-3 rounded-lg border border-orange-100 text-orange-800 font-medium mb-2">
+                                             {customerInstallation.notes || 'Brak szczegółów urządzenia w notatkach.'}
+                                          </div>
+                                          
+                                          {/* Enhanced Accessories List */}
+                                          {acceptedOffer && acceptedOffer.type === 'HEATING' && (
+                                             <div className="bg-white p-3 rounded-lg border border-slate-200 mt-2">
+                                                <p className="text-xs font-bold text-slate-400 uppercase mb-2">Akcesoria i Usługi dodatkowe</p>
+                                                {(() => {
+                                                   const heatState = acceptedOffer.calculatorState as HeatingCalculatorState;
+                                                   if (heatState.selectedAccessoryIds && heatState.selectedAccessoryIds.length > 0) {
+                                                      const accessoryNames = heatState.selectedAccessoryIds.map(id => {
+                                                         const item = inventory.find(inv => inv.id === id);
+                                                         return item ? item.name : 'Nieznany element';
+                                                      });
+                                                      
+                                                      return (
+                                                         <ul className="list-disc list-inside space-y-1 text-slate-700 font-medium text-xs">
+                                                            {accessoryNames.map((name, idx) => (
+                                                               <li key={idx}>{name}</li>
+                                                            ))}
+                                                         </ul>
+                                                      );
+                                                   }
+                                                   return <p className="text-xs text-slate-400 italic">Brak dodatkowych akcesoriów</p>;
+                                                })()}
+                                             </div>
+                                          )}
+                                       </div>
+                                    )}
                                  </div>
                                  
-                                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                                    <h4 className="font-bold text-slate-700 mb-3 text-sm uppercase">Harmonogram</h4>
-                                    <div className="space-y-2 text-sm">
-                                       <div className="flex justify-between"><span className="text-slate-500">Data montażu:</span> <span className="font-medium">{customerInstallation.dateScheduled || 'Do ustalenia'}</span></div>
-                                       <div className="flex justify-between"><span className="text-slate-500">Ekipa:</span> <span className="font-medium">{users.find(u => u.id === customerInstallation.assignedTeam)?.name || 'Nieprzypisana'}</span></div>
-                                       <div className="flex justify-between"><span className="text-slate-500">Adres:</span> <span className="font-medium truncate max-w-[150px]">{customerInstallation.address}</span></div>
+                                 <div className="flex flex-col gap-6">
+                                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                                       <h4 className="font-bold text-slate-700 mb-4 text-sm uppercase flex items-center">
+                                          <Calendar className="w-4 h-4 mr-2 text-blue-500" /> Harmonogram & Ekipa
+                                       </h4>
+                                       <div className="space-y-4">
+                                          <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 relative">
+                                             <label className="block text-xs font-bold text-blue-700 mb-1 uppercase">Planowana Data</label>
+                                             <input 
+                                                type="date"
+                                                value={customerInstallation.dateScheduled || ''}
+                                                onChange={(e) => handleUpdateInstallationField(customerInstallation, 'dateScheduled', e.target.value, 'date')}
+                                                className="w-full p-2 border border-blue-200 rounded-lg text-sm bg-white font-bold text-slate-800 focus:ring-2 focus:ring-blue-400 outline-none"
+                                             />
+                                             {saveSuccessField === 'date' && (
+                                                <span className="absolute top-2 right-2 text-green-600 text-xs font-bold animate-fade-in flex items-center">
+                                                   <Check className="w-3 h-3 mr-1"/> Zapisano!
+                                                </span>
+                                             )}
+                                          </div>
+                                          <div className="relative">
+                                             <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">Przypisana Ekipa</label>
+                                             <div className="relative">
+                                                <Wrench className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                                                <select 
+                                                   value={customerInstallation.assignedTeam || ''}
+                                                   onChange={(e) => handleUpdateInstallationField(customerInstallation, 'assignedTeam', e.target.value, 'team')}
+                                                   className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-xl text-sm bg-white font-medium focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
+                                                >
+                                                   <option value="">-- Wybierz ekipę --</option>
+                                                   {installers.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                                                </select>
+                                                {saveSuccessField === 'team' && (
+                                                   <span className="absolute top-1/2 -translate-y-1/2 right-8 text-green-600 text-xs font-bold animate-fade-in flex items-center bg-white px-1">
+                                                      <Check className="w-3 h-3 mr-1"/> Zapisano!
+                                                   </span>
+                                                )}
+                                             </div>
+                                          </div>
+                                       </div>
                                     </div>
-                                 </div>
-                              </div>
-
-                              {/* Simple Payments View (Read Only here, management in Installations view) */}
-                              <div>
-                                 <h4 className="font-bold text-slate-800 mb-3 text-sm uppercase flex items-center">
-                                    <DollarSign className="w-4 h-4 mr-1"/> Finanse
-                                 </h4>
-                                 <div className="w-full bg-slate-100 rounded-full h-4 mb-2 overflow-hidden">
-                                    <div 
-                                      className="bg-green-500 h-full rounded-full" 
-                                      style={{ width: `${Math.min(100, (customerInstallation.paidAmount / (customerInstallation.price || 1)) * 100)}%` }}
-                                    ></div>
-                                 </div>
-                                 <div className="flex justify-between text-sm font-bold">
-                                    <span className="text-green-600">Opłacono: {customerInstallation.paidAmount.toLocaleString()} PLN</span>
-                                    <span className="text-slate-600">Suma: {customerInstallation.price.toLocaleString()} PLN</span>
                                  </div>
                               </div>
                            </div>
@@ -451,95 +957,368 @@ export const Customers: React.FC<CustomersProps> = ({
                      </div>
                   )}
 
-                  {/* TAB: NOTES (MODERN & READABLE) */}
-                  {activeTab === 'notes' && (
-                     <div className="max-w-4xl space-y-8 animate-fade-in flex flex-col h-full">
-                        {/* 1. New Note Composer (Top) */}
-                        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm shrink-0 relative z-10">
-                           <div className="flex items-start gap-4">
-                              <div className="w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-sm shadow-md shrink-0 overflow-hidden">
-                                 <UserIcon className="w-5 h-5" />
-                              </div>
-                              <div className="flex-1">
-                                 <textarea 
-                                    className="w-full p-4 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none bg-slate-50 focus:bg-white transition-all shadow-inner placeholder:text-slate-400"
-                                    placeholder="Napisz notatkę o kliencie..."
-                                    rows={3}
-                                    value={newNoteContent}
-                                    onChange={(e) => setNewNoteContent(e.target.value)}
-                                 ></textarea>
-                                 <div className="flex justify-between items-center mt-3">
-                                    <p className="text-xs text-slate-400 font-medium">
-                                       Notatka zostanie przypisana do: <span className="text-slate-600 font-bold">{currentUser.name}</span>
-                                    </p>
+                  {/* TAB: FINANCES */}
+                  {activeTab === 'finances' && (
+                     <div className="max-w-4xl space-y-6 animate-fade-in">
+                        {customerInstallation ? (
+                           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                              <div className="flex justify-between items-center mb-6">
+                                 <h3 className="font-bold text-lg text-slate-800 flex items-center">
+                                    <DollarSign className="w-6 h-6 mr-2 text-green-600" /> Finanse
+                                 </h3>
+                                 
+                                 {/* Mode Toggle */}
+                                 <div className="flex bg-slate-100 p-1 rounded-xl">
                                     <button 
-                                       onClick={handleAddNote}
-                                       disabled={!newNoteContent.trim()}
-                                       className="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-blue-700 transition-all shadow-md disabled:opacity-50 disabled:shadow-none flex items-center hover:scale-105 active:scale-95"
+                                       onClick={() => setFinanceMode('CLIENT')}
+                                       className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${financeMode === 'CLIENT' ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
                                     >
-                                       <Send className="w-4 h-4 mr-2" /> Dodaj Notatkę
+                                       Rozliczenie Klienta
+                                    </button>
+                                    <button 
+                                       onClick={() => setFinanceMode('COMMISSION')}
+                                       className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${financeMode === 'COMMISSION' ? 'bg-white shadow text-purple-600' : 'text-slate-500 hover:text-slate-700'}`}
+                                    >
+                                       Wypłata Prowizji
                                     </button>
                                  </div>
                               </div>
+
+                              {financeMode === 'CLIENT' ? (
+                                 // CLIENT VIEW
+                                 <div className="animate-fade-in">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                                       <div className="p-4 rounded-xl border bg-slate-50 border-slate-200">
+                                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Wartość Umowy</label>
+                                          <input 
+                                             type="number" 
+                                             value={customerInstallation.price || ''}
+                                             onChange={(e) => onUpdateInstallation({ ...customerInstallation, price: parseFloat(e.target.value) })}
+                                             className="w-full bg-transparent font-bold text-2xl text-slate-800 outline-none"
+                                             placeholder="0"
+                                          />
+                                          <span className="text-xs text-slate-400">PLN Brutto</span>
+                                       </div>
+                                       <div className="p-4 rounded-xl border bg-green-50 border-green-200">
+                                          <label className="block text-xs font-bold text-green-600 uppercase mb-1">Wpłacono</label>
+                                          <p className="font-bold text-2xl text-green-700">{customerInstallation.paidAmount.toLocaleString()} PLN</p>
+                                       </div>
+                                       {/* Dynamic Payment Status: Overpayment or Due */}
+                                       {(() => {
+                                          const remaining = customerInstallation.price - customerInstallation.paidAmount;
+                                          if (remaining < 0) {
+                                             return (
+                                                <div className="p-4 rounded-xl border bg-blue-50 border-blue-200">
+                                                   <label className="block text-xs font-bold text-blue-600 uppercase mb-1">Nadpłata</label>
+                                                   <p className="font-bold text-2xl text-blue-700">{Math.abs(remaining).toLocaleString()} PLN</p>
+                                                </div>
+                                             );
+                                          }
+                                          return (
+                                             <div className="p-4 rounded-xl border bg-red-50 border-red-200">
+                                                <label className="block text-xs font-bold text-red-600 uppercase mb-1">Do Zapłaty</label>
+                                                <p className="font-bold text-2xl text-red-700">{remaining.toLocaleString()} PLN</p>
+                                             </div>
+                                          );
+                                       })()}
+                                    </div>
+
+                                    <div className="bg-slate-50 rounded-xl p-5 border border-slate-200 mb-6">
+                                       <h4 className="font-bold text-slate-700 mb-4 text-sm uppercase">Dodaj Wpłatę Klienta</h4>
+                                       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                                          <div className="md:col-span-3">
+                                             <label className="block text-xs font-bold text-slate-500 mb-1">Kwota (PLN)</label>
+                                             <input type="number" value={newPaymentAmount} onChange={(e) => setNewPaymentAmount(e.target.value)} className="w-full p-3 border rounded-lg" placeholder="0.00" />
+                                          </div>
+                                          <div className="md:col-span-3">
+                                             <label className="block text-xs font-bold text-slate-500 mb-1">Data</label>
+                                             <input type="date" value={newPaymentDate} onChange={(e) => setNewPaymentDate(e.target.value)} className="w-full p-3 border rounded-lg" />
+                                          </div>
+                                          <div className="md:col-span-4">
+                                             <label className="block text-xs font-bold text-slate-500 mb-1">Opis / Tytuł</label>
+                                             <input type="text" value={newPaymentDesc} onChange={(e) => setNewPaymentDesc(e.target.value)} className="w-full p-3 border rounded-lg" placeholder="np. Zaliczka, Faktura 1/2023" />
+                                          </div>
+                                          <div className="md:col-span-2 flex gap-2">
+                                             <button 
+                                                onClick={() => paymentFileInputRef.current?.click()}
+                                                className={`p-3 rounded-lg border flex items-center justify-center transition-colors ${paymentAttachment ? 'bg-green-100 border-green-300 text-green-700' : 'bg-white border-slate-300 text-slate-500 hover:bg-slate-50'}`}
+                                                title="Dodaj załącznik (Faktura/Potwierdzenie)"
+                                             >
+                                                <Paperclip className="w-5 h-5" />
+                                                <input type="file" ref={paymentFileInputRef} className="hidden" accept="image/*,.pdf" onChange={handlePaymentAttachmentUpload} />
+                                             </button>
+                                             <button onClick={handleAddPaymentSubmit} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold p-3 rounded-lg flex items-center justify-center">
+                                                <Plus className="w-5 h-5" />
+                                             </button>
+                                          </div>
+                                       </div>
+                                    </div>
+                                 </div>
+                              ) : (
+                                 // COMMISSION VIEW
+                                 <div className="animate-fade-in">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                                       <div className="p-4 rounded-xl border bg-purple-50 border-purple-200">
+                                          <label className="block text-xs font-bold text-purple-600 uppercase mb-1">Naliczona Marża (Całość)</label>
+                                          <input 
+                                             type="number" 
+                                             value={customerInstallation.commissionValue || 0}
+                                             onChange={(e) => onUpdateInstallation({ ...customerInstallation, commissionValue: parseFloat(e.target.value) })}
+                                             className="w-full bg-transparent font-bold text-2xl text-purple-800 outline-none"
+                                          />
+                                          <span className="text-xs text-purple-400">PLN (Do podziału)</span>
+                                       </div>
+                                       <div className="p-4 rounded-xl border bg-green-50 border-green-200">
+                                          <label className="block text-xs font-bold text-green-600 uppercase mb-1">Wypłacono Handlowcowi</label>
+                                          <p className="font-bold text-2xl text-green-700">
+                                             {customerInstallation.commissionHistory?.reduce((sum, p) => sum + p.amount, 0).toLocaleString() || 0} PLN
+                                          </p>
+                                       </div>
+                                       {/* Dynamic Commission Remaining */}
+                                       {(() => {
+                                          const remainingComm = (customerInstallation.commissionValue || 0) - (customerInstallation.commissionHistory?.reduce((sum, p) => sum + p.amount, 0) || 0);
+                                          if (remainingComm < 0) {
+                                             return (
+                                                <div className="p-4 rounded-xl border bg-blue-50 border-blue-200">
+                                                   <label className="block text-xs font-bold text-blue-600 uppercase mb-1">Nadpłata Prowizji</label>
+                                                   <p className="font-bold text-2xl text-blue-700">{Math.abs(remainingComm).toLocaleString()} PLN</p>
+                                                </div>
+                                             );
+                                          }
+                                          return (
+                                             <div className="p-4 rounded-xl border bg-slate-50 border-slate-200">
+                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Pozostało do wypłaty</label>
+                                                <p className="font-bold text-2xl text-slate-700">{remainingComm.toLocaleString()} PLN</p>
+                                             </div>
+                                          );
+                                       })()}
+                                    </div>
+
+                                    <div className="bg-purple-50 rounded-xl p-5 border border-purple-100 mb-6">
+                                       <h4 className="font-bold text-purple-800 mb-4 text-sm uppercase">Zaksięguj Wypłatę Prowizji</h4>
+                                       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                                          <div className="md:col-span-3">
+                                             <label className="block text-xs font-bold text-purple-700 mb-1">Kwota (PLN)</label>
+                                             <input type="number" value={newPaymentAmount} onChange={(e) => setNewPaymentAmount(e.target.value)} className="w-full p-3 border border-purple-200 rounded-lg focus:ring-purple-500" placeholder="0.00" />
+                                          </div>
+                                          <div className="md:col-span-3">
+                                             <label className="block text-xs font-bold text-purple-700 mb-1">Data</label>
+                                             <input type="date" value={newPaymentDate} onChange={(e) => setNewPaymentDate(e.target.value)} className="w-full p-3 border border-purple-200 rounded-lg focus:ring-purple-500" />
+                                          </div>
+                                          <div className="md:col-span-4">
+                                             <label className="block text-xs font-bold text-purple-700 mb-1">Opis</label>
+                                             <input type="text" value={newPaymentDesc} onChange={(e) => setNewPaymentDesc(e.target.value)} className="w-full p-3 border border-purple-200 rounded-lg focus:ring-purple-500" placeholder="np. Transza 1" />
+                                          </div>
+                                          <div className="md:col-span-2 flex gap-2">
+                                             <button 
+                                                onClick={() => commissionFileInputRef.current?.click()}
+                                                className={`p-3 rounded-lg border border-purple-300 flex items-center justify-center transition-colors ${commissionAttachment ? 'bg-green-100 text-green-700' : 'bg-white text-purple-500 hover:bg-purple-50'}`}
+                                                title="Dodaj potwierdzenie przelewu"
+                                             >
+                                                <Paperclip className="w-5 h-5" />
+                                                <input type="file" ref={commissionFileInputRef} className="hidden" accept="image/*,.pdf" onChange={handlePaymentAttachmentUpload} />
+                                             </button>
+                                             <button onClick={handleAddPaymentSubmit} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold p-3 rounded-lg flex items-center justify-center">
+                                                <Plus className="w-5 h-5" />
+                                             </button>
+                                          </div>
+                                       </div>
+                                    </div>
+                                 </div>
+                              )}
+
+                              {/* Payment History List (Generic for both modes) */}
+                              <div>
+                                 <h4 className="font-bold text-slate-700 mb-3 text-sm uppercase">
+                                    Historia {financeMode === 'CLIENT' ? 'Wpłat Klienta' : 'Wypłat Prowizji'}
+                                 </h4>
+                                 <div className="space-y-2">
+                                    {/* SORTING ADDED: Newest First using Full ISO String */}
+                                    {((financeMode === 'CLIENT' ? customerInstallation.paymentHistory : customerInstallation.commissionHistory) || [])
+                                       .slice()
+                                       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                       .map(p => {
+                                          const dateObj = new Date(p.date);
+                                          const isValidDate = !isNaN(dateObj.getTime());
+                                          
+                                          return (
+                                          <div key={p.id} className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-100 text-sm">
+                                             <div className="flex items-center">
+                                                <span className="font-bold text-slate-700 w-24 text-right mr-4">{p.amount.toLocaleString()} PLN</span>
+                                                <div className="border-l border-slate-200 pl-4">
+                                                   <p className="text-slate-800 font-medium">{p.comment || 'Bez opisu'}</p>
+                                                   <p className="text-xs text-slate-500">
+                                                      {isValidDate ? dateObj.toLocaleDateString('pl-PL') : p.date} • {p.recordedBy}
+                                                   </p>
+                                                </div>
+                                             </div>
+                                             <div className="flex items-center gap-2">
+                                                {p.attachments && p.attachments.length > 0 && (
+                                                   <button 
+                                                      onClick={() => handleDownloadFile(p.attachments![0])}
+                                                      className="text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors" 
+                                                      title="Pobierz załącznik"
+                                                   >
+                                                      <Download className="w-4 h-4" />
+                                                   </button>
+                                                )}
+                                                <button 
+                                                   onClick={() => financeMode === 'CLIENT' ? onRemovePayment(customerInstallation.id, p.id) : onRemoveCommissionPayout(customerInstallation.id, p.id)}
+                                                   className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg transition-colors"
+                                                >
+                                                   <Trash2 className="w-4 h-4" />
+                                                </button>
+                                             </div>
+                                          </div>
+                                          );
+                                       })}
+                                 </div>
+                              </div>
+                           </div>
+                        ) : (
+                           <div className="text-center p-10 bg-white rounded-2xl border border-dashed border-slate-300">
+                              <DollarSign className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                              <p className="text-slate-500 font-medium">Brak danych finansowych.</p>
+                              <p className="text-sm text-slate-400">Instalacja nie została jeszcze utworzona.</p>
+                           </div>
+                        )}
+                     </div>
+                  )}
+
+                  {/* TAB: AUDIT */}
+                  {activeTab === 'audit' && (
+                     <div className="max-w-6xl space-y-6 animate-fade-in h-full flex flex-col md:flex-row gap-6">
+                        {/* Steps Sidebar */}
+                        <div className="md:w-1/3 bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col shadow-sm">
+                           <div className="p-4 bg-slate-50 border-b border-slate-100 font-bold text-slate-700">
+                              Etapy Audytu
+                           </div>
+                           <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                              {AUDIT_STEPS.map(step => {
+                                 const count = editForm.auditPhotos?.filter(p => p.category === step.id.toString()).length || 0;
+                                 const isComplete = count > 0;
+                                 return (
+                                    <div 
+                                       key={step.id}
+                                       onClick={() => setActiveAuditStepId(step.id)}
+                                       className={`p-3 rounded-xl cursor-pointer text-sm font-medium transition-all flex justify-between items-center ${activeAuditStepId === step.id ? 'bg-blue-50 text-blue-700 border border-blue-100' : 'text-slate-600 hover:bg-slate-50 border border-transparent'}`}
+                                    >
+                                       <span className="truncate mr-2">{step.label}</span>
+                                       {isComplete && <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />}
+                                    </div>
+                                 )
+                              })}
                            </div>
                         </div>
 
-                        {/* 2. Timeline History */}
-                        <div className="flex-1 overflow-y-auto pr-2 pb-12">
-                           {editForm.notesHistory && editForm.notesHistory.length > 0 ? (
-                              <div className="relative pl-14 space-y-8 before:absolute before:left-[27px] before:top-2 before:h-full before:w-0.5 before:bg-slate-200 before:content-['']">
-                                 {editForm.notesHistory.map((note) => {
-                                    const roleStyle = getRoleConfig(note.authorRole);
-                                    return (
-                                       <div key={note.id} className="relative animate-slide-up">
-                                          {/* Timeline Dot with Avatar */}
-                                          <div className={`absolute left-2 top-0 w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md border-4 border-slate-50 z-10 overflow-hidden ${roleStyle.iconColor}`}>
-                                             <UserIcon className="w-5 h-5" />
-                                          </div>
-
-                                          {/* Content Card */}
-                                          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-                                             {/* Card Header */}
-                                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 pb-3 border-b border-slate-100">
-                                                <div className="flex items-center gap-2">
-                                                   <span className="font-bold text-slate-900">{note.authorName}</span>
-                                                   <span className={`text-[10px] uppercase font-extrabold px-2 py-0.5 rounded-full border ${roleStyle.color}`}>
-                                                      {roleStyle.label}
-                                                   </span>
-                                                </div>
-                                                <div className="flex items-center text-xs text-slate-400 font-medium">
-                                                   <Clock className="w-3.5 h-3.5 mr-1.5" />
-                                                   {new Date(note.date).toLocaleString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                                </div>
-                                             </div>
-                                             
-                                             {/* Note Body */}
-                                             <div className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap">
-                                                {note.content}
-                                             </div>
+                        {/* Photos Area */}
+                        <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+                           <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                              <h4 className="font-bold text-slate-700">
+                                 {AUDIT_STEPS.find(s => s.id === activeAuditStepId)?.label}
+                              </h4>
+                              <button 
+                                 onClick={() => auditFileInputRef.current?.click()}
+                                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center transition-colors"
+                              >
+                                 <Camera className="w-4 h-4 mr-2" /> Dodaj Zdjęcie
+                                 <input type="file" ref={auditFileInputRef} className="hidden" accept="image/*,application/pdf" onChange={handleAuditPhotoUpload} />
+                              </button>
+                           </div>
+                           
+                           <div className="p-4 flex-1 overflow-y-auto bg-slate-100/50">
+                              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                 {editForm.auditPhotos?.filter(p => p.category === activeAuditStepId?.toString()).map(photo => (
+                                    <div key={photo.id} className="bg-white p-2 rounded-xl border border-slate-200 shadow-sm group relative">
+                                       <div className="aspect-square bg-slate-100 rounded-lg overflow-hidden mb-2 relative cursor-pointer" onClick={() => handleZoom(photo.url || '')}>
+                                          {photo.type === 'application/pdf' ? (
+                                             <div className="w-full h-full flex items-center justify-center text-slate-400">PDF</div>
+                                          ) : (
+                                             <img src={photo.url} alt="audit" className="w-full h-full object-cover" />
+                                          )}
+                                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                             <ZoomIn className="w-8 h-8 text-white drop-shadow-md" />
                                           </div>
                                        </div>
-                                    );
-                                 })}
+                                       <input 
+                                          type="text" 
+                                          placeholder="Opis..."
+                                          defaultValue={photo.description || ''}
+                                          onBlur={(e) => handleUpdateAuditFileNote(photo.id, e.target.value)}
+                                          className="w-full text-xs p-1 border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none bg-transparent"
+                                       />
+                                       <button 
+                                          onClick={(e) => handleInitiateDelete(e, photo)}
+                                          className="absolute top-3 right-3 bg-red-500 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-red-600"
+                                       >
+                                          <Trash2 className="w-3 h-3" />
+                                       </button>
+                                    </div>
+                                 ))}
+                                 {(!editForm.auditPhotos?.filter(p => p.category === activeAuditStepId?.toString()).length) && (
+                                    <div className="col-span-full flex flex-col items-center justify-center py-10 text-slate-400">
+                                       <ImageIcon className="w-12 h-12 mb-2 opacity-20" />
+                                       <p className="text-sm">Brak zdjęć w tym kroku</p>
+                                    </div>
+                                 )}
                               </div>
-                           ) : (
-                              /* Legacy or Empty State */
-                              editForm.notes ? (
-                                 <div className="bg-amber-50 p-6 rounded-2xl border border-amber-200 text-slate-700 text-sm whitespace-pre-wrap leading-relaxed shadow-sm">
-                                    <div className="flex items-center mb-4 font-bold text-amber-800 uppercase tracking-wide text-xs border-b border-amber-200 pb-2">
-                                       <HistoryIcon className="w-4 h-4 mr-2"/> Archiwum notatek (Legacy)
+                           </div>
+                           <div className="p-3 border-t border-slate-100 bg-slate-50 flex justify-end">
+                              <button onClick={saveAuditChanges} className="text-blue-600 font-bold text-sm hover:bg-blue-100 px-4 py-2 rounded-lg transition-colors">
+                                 Zapisz zmiany w opisach
+                              </button>
+                           </div>
+                        </div>
+                     </div>
+                  )}
+
+                  {/* TAB: NOTES */}
+                  {activeTab === 'notes' && (
+                     <div className="max-w-4xl space-y-6 animate-fade-in">
+                        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                           <div className="flex gap-2">
+                              <textarea 
+                                 value={newNoteContent}
+                                 onChange={(e) => setNewNoteContent(e.target.value)}
+                                 placeholder="Wpisz nową notatkę..."
+                                 className="flex-1 p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none resize-none h-24"
+                              />
+                              <button 
+                                 onClick={handleAddNote}
+                                 disabled={!newNoteContent.trim()}
+                                 className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 rounded-xl font-bold transition-colors"
+                              >
+                                 <Send className="w-5 h-5" />
+                              </button>
+                           </div>
+                        </div>
+
+                        <div className="space-y-4">
+                           {editForm.notesHistory?.map((note, index) => (
+                              <div key={note.id || index} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                                 <div className="flex justify-between items-start mb-2">
+                                    <div className="flex items-center gap-2">
+                                       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white ${getRoleConfig(note.authorRole).iconColor}`}>
+                                          {note.authorName.charAt(0)}
+                                       </div>
+                                       <div>
+                                          <p className="text-sm font-bold text-slate-800">{note.authorName}</p>
+                                          <p className="text-xs text-slate-500 uppercase">{getRoleConfig(note.authorRole).label}</p>
+                                       </div>
                                     </div>
-                                    {editForm.notes}
+                                    <span className="text-xs text-slate-400">
+                                       {new Date(note.date).toLocaleString()}
+                                    </span>
                                  </div>
-                              ) : (
-                                 <div className="text-center py-16 flex flex-col items-center">
-                                    <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-4 text-slate-300">
-                                       <MessageSquare className="w-10 h-10" />
-                                    </div>
-                                    <p className="text-slate-500 font-medium">Brak notatek dla tego klienta.</p>
-                                    <p className="text-xs text-slate-400 mt-1">Bądź pierwszy i dodaj nową notatkę powyżej.</p>
-                                 </div>
-                              )
+                                 <p className="text-slate-600 text-sm whitespace-pre-wrap pl-10">
+                                    {note.content}
+                                 </p>
+                              </div>
+                           ))}
+                           {(!editForm.notesHistory || editForm.notesHistory.length === 0) && (
+                              <div className="text-center p-10">
+                                 <p className="text-slate-400">Brak historii notatek.</p>
+                              </div>
                            )}
                         </div>
                      </div>
@@ -547,117 +1326,129 @@ export const Customers: React.FC<CustomersProps> = ({
 
                   {/* TAB: FILES */}
                   {activeTab === 'files' && (
-                     <div className="max-w-4xl space-y-6 animate-fade-in">
-                        <div className="bg-white p-8 rounded-2xl border-2 border-dashed border-slate-300 text-center hover:bg-slate-50 transition-colors cursor-pointer">
-                           <FilePlus className="w-12 h-12 text-blue-500 mx-auto mb-4" />
-                           <p className="font-bold text-slate-800">Przeciągnij pliki tutaj lub kliknij, aby dodać</p>
-                           <p className="text-sm text-slate-400 mt-2">Dokumenty, zdjęcia, umowy (PDF, JPG, PNG)</p>
+                     <div className="max-w-6xl space-y-6 animate-fade-in">
+                        <div className="flex justify-between items-center">
+                           <h3 className="text-lg font-bold text-slate-800">Pliki Klienta</h3>
+                           <button 
+                              onClick={() => genericFileInputRef.current?.click()}
+                              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold flex items-center shadow-sm"
+                           >
+                              <FilePlus className="w-4 h-4 mr-2" /> Dodaj Plik
+                              <input type="file" ref={genericFileInputRef} className="hidden" onChange={handleGenericFileUpload} />
+                           </button>
                         </div>
 
-                        {/* File List Mockup */}
-                        <div className="space-y-3">
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm min-h-[300px]">
                            {editForm.files && editForm.files.length > 0 ? (
-                              editForm.files.map(file => (
-                                 <div key={file.id} className="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between">
-                                    <div className="flex items-center">
-                                       <div className="p-3 bg-blue-50 text-blue-600 rounded-lg mr-4">
-                                          <FileText className="w-6 h-6" />
+                              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                 {editForm.files.map(file => (
+                                    <div key={file.id} className="group relative bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col hover:shadow-md transition-all">
+                                       <div className="aspect-[4/3] bg-white rounded-lg mb-2 overflow-hidden flex items-center justify-center border border-slate-100 cursor-pointer" onClick={() => file.type.startsWith('image') ? handleZoom(file.url || '') : handleDownloadFile(file)}>
+                                          {file.type.startsWith('image') ? (
+                                             <img src={file.url} alt={file.name} className="w-full h-full object-cover" />
+                                          ) : (
+                                             <FileText className="w-12 h-12 text-slate-400" />
+                                          )}
                                        </div>
-                                       <div>
-                                          <p className="font-bold text-slate-800 text-sm">{file.name}</p>
-                                          <p className="text-xs text-slate-400">{new Date(file.dateUploaded).toLocaleDateString()} • {file.type}</p>
+                                       <p className="text-xs font-bold text-slate-700 truncate mb-1" title={file.name}>{file.name}</p>
+                                       <input 
+                                          type="text" 
+                                          placeholder="Dodaj opis..."
+                                          defaultValue={file.description || ''}
+                                          onBlur={(e) => handleUpdateGenericFileNote(file.id, e.target.value)}
+                                          className="text-[10px] bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 outline-none text-slate-500 w-full"
+                                       />
+                                       <div className="absolute top-2 right-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <button onClick={() => handleDownloadFile(file)} className="bg-white p-1.5 rounded-lg shadow text-blue-600 hover:text-blue-700"><Download className="w-3 h-3"/></button>
+                                          <button onClick={(e) => handleInitiateDelete(e, file)} className="bg-white p-1.5 rounded-lg shadow text-red-500 hover:text-red-600"><Trash2 className="w-3 h-3"/></button>
                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                       <button className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                                          <Download className="w-5 h-5" />
-                                       </button>
-                                       <button className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                                          <Trash2 className="w-5 h-5" />
-                                       </button>
-                                    </div>
-                                 </div>
-                              ))
+                                 ))}
+                              </div>
                            ) : (
-                              <p className="text-center text-slate-400 py-4 text-sm">Brak plików</p>
+                              <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+                                 <FileText className="w-16 h-16 mb-4 opacity-20" />
+                                 <p>Brak plików w tej sekcji.</p>
+                              </div>
+                           )}
+                           
+                           {editForm.files && editForm.files.length > 0 && (
+                              <div className="mt-6 flex justify-end">
+                                 <button onClick={saveGenericFileChanges} className="text-indigo-600 font-bold text-sm hover:bg-indigo-50 px-4 py-2 rounded-lg transition-colors">
+                                    Zapisz opisy plików
+                                 </button>
+                              </div>
                            )}
                         </div>
                      </div>
                   )}
-
                </div>
             </>
          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-slate-300 p-8">
-               <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mb-6">
-                  <UserIcon className="w-12 h-12 opacity-20" />
+            <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8">
+               <div className="bg-white p-8 rounded-full shadow-sm mb-4">
+                  <UserIcon className="w-16 h-16 text-slate-200" />
                </div>
-               <h2 className="text-2xl font-bold text-slate-400">Wybierz klienta</h2>
-               <p className="text-slate-400 mt-2">Wybierz osobę z listy po lewej, aby zobaczyć szczegóły.</p>
+               <h3 className="text-xl font-bold text-slate-700 mb-2">Wybierz klienta</h3>
+               <p className="text-sm max-w-xs text-center">Wybierz klienta z listy po lewej stronie, aby zobaczyć szczegóły, oferty i historię.</p>
             </div>
          )}
       </div>
 
       {/* Add Customer Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowAddModal(false)}></div>
-           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md relative z-10 animate-fade-in">
-              <div className="p-5 border-b border-slate-100 flex justify-between items-center">
-                 <h3 className="text-xl font-bold text-slate-800">Nowy Klient</h3>
-                 <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600">
-                    <X className="w-6 h-6" />
-                 </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-slide-up">
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                 <h3 className="font-bold text-lg text-slate-800">Nowy Klient</h3>
+                 <button onClick={() => setShowAddModal(false)}><X className="w-5 h-5 text-slate-400 hover:text-slate-600" /></button>
               </div>
               <form onSubmit={handleAddSubmit} className="p-6 space-y-4">
-                 <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Imię i Nazwisko</label>
-                    <input 
-                      type="text" 
-                      required 
-                      value={newCustomerData.name} 
-                      onChange={e => setNewCustomerData({...newCustomerData, name: e.target.value})}
-                      className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
-                 </div>
-                 <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label>
-                    <input 
-                      type="email" 
-                      required 
-                      value={newCustomerData.email} 
-                      onChange={e => setNewCustomerData({...newCustomerData, email: e.target.value})}
-                      className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
-                 </div>
-                 <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Telefon</label>
-                    <input 
-                      type="text" 
-                      required 
-                      value={newCustomerData.phone} 
-                      onChange={e => setNewCustomerData({...newCustomerData, phone: e.target.value})}
-                      className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
-                 </div>
-                 <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Adres</label>
-                    <input 
-                      type="text" 
-                      required 
-                      value={newCustomerData.address} 
-                      onChange={e => setNewCustomerData({...newCustomerData, address: e.target.value})}
-                      className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
-                 </div>
-                 <div className="pt-4">
-                    <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-blue-700 transition-colors">
-                       Dodaj Klienta
-                    </button>
-                 </div>
+                 <input type="text" placeholder="Imię i Nazwisko" required className="w-full p-3 border rounded-xl" value={newCustomerData.name} onChange={e => setNewCustomerData({...newCustomerData, name: e.target.value})} />
+                 <input type="email" placeholder="Email" className="w-full p-3 border rounded-xl" value={newCustomerData.email} onChange={e => setNewCustomerData({...newCustomerData, email: e.target.value})} />
+                 <input type="text" placeholder="Telefon" className="w-full p-3 border rounded-xl" value={newCustomerData.phone} onChange={e => setNewCustomerData({...newCustomerData, phone: e.target.value})} />
+                 <input type="text" placeholder="Adres" className="w-full p-3 border rounded-xl" value={newCustomerData.address} onChange={e => setNewCustomerData({...newCustomerData, address: e.target.value})} />
+                 <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700">Dodaj Klienta</button>
               </form>
            </div>
         </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {photoToDelete && (
+         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-shake">
+               <div className="text-center">
+                  <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                     <Trash2 className="w-8 h-8" />
+                  </div>
+                  <h3 className="font-bold text-lg text-slate-800 mb-2">Usunąć plik?</h3>
+                  <p className="text-sm text-slate-500 mb-6">Tej operacji nie można cofnąć.</p>
+                  <div className="flex gap-3">
+                     <button onClick={() => setPhotoToDelete(null)} className="flex-1 py-2.5 rounded-xl border font-bold text-slate-600 hover:bg-slate-50">Anuluj</button>
+                     <button onClick={confirmDeletePhoto} className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-bold hover:bg-red-700 shadow-lg shadow-red-200">Usuń</button>
+                  </div>
+               </div>
+            </div>
+         </div>
+      )}
+
+      {/* Image Zoom Modal */}
+      {zoomedImage && (
+         <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4" onClick={() => setZoomedImage(null)}>
+            <div className="relative w-full h-full max-w-5xl max-h-[90vh] flex items-center justify-center">
+               <img 
+                  src={zoomedImage} 
+                  className="max-w-full max-h-full object-contain rounded-lg shadow-2xl transition-transform duration-200" 
+                  style={{ transform: `scale(${zoomScale})` }}
+                  onClick={(e) => { e.stopPropagation(); setZoomScale(zoomScale === 1 ? 2 : 1); }}
+               />
+               <button onClick={() => setZoomedImage(null)} className="absolute top-4 right-4 text-white/70 hover:text-white bg-black/50 rounded-full p-2"><X className="w-8 h-8"/></button>
+               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 text-white px-4 py-2 rounded-full text-sm backdrop-blur-md">
+                  Kliknij aby przybliżyć / oddalić
+               </div>
+            </div>
+         </div>
       )}
     </div>
   );

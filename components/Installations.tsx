@@ -1,7 +1,6 @@
-
 import React, { useState } from 'react';
 import { Installation, InstallationStatus, Customer, UserRole, User } from '../types';
-import { Calendar, MapPin, ChevronRight, Banknote, Briefcase, Lock, Users, Clock, Hammer, Phone, Navigation, Box, Zap, CheckCircle, ArrowRight, Home, Shovel, CheckSquare, Square, List, CalendarDays, ChevronLeft, Map, ZoomIn, ZoomOut, AlertCircle, Battery, RotateCcw } from 'lucide-react';
+import { Calendar, MapPin, ChevronRight, Banknote, Briefcase, Lock, Users, Clock, Hammer, Phone, Navigation, Box, Zap, CheckCircle, ArrowRight, Home, Shovel, CheckSquare, Square, List, CalendarDays, ChevronLeft, Map, ZoomIn, ZoomOut, AlertCircle, Battery, RotateCcw, Flame } from 'lucide-react';
 
 interface InstallationsProps {
   installations: Installation[];
@@ -11,6 +10,26 @@ interface InstallationsProps {
   onUpdateInstallation: (installation: Installation) => void;
   currentUserRole: UserRole;
 }
+
+// Reuse the helper logic from Dashboard but duplicated for independence in this context (or could be shared util)
+const getInstallationType = (inst: Installation): 'PV' | 'PVME' | 'ME' | 'HEAT' => {
+   const hasPV = inst.systemSizeKw > 0;
+   const hasStorage = inst.storageSizeKw && inst.storageSizeKw > 0;
+   
+   if (hasPV && hasStorage) return 'PVME';
+   if (hasPV) return 'PV';
+   if (hasStorage) return 'ME';
+   return 'HEAT';
+};
+
+const getTypeConfig = (type: 'PV' | 'PVME' | 'ME' | 'HEAT') => {
+   switch (type) {
+      case 'PVME': return { border: 'border-l-4 border-l-indigo-500', badge: 'bg-indigo-100 text-indigo-700', icon: Zap };
+      case 'ME': return { border: 'border-l-4 border-l-emerald-500', badge: 'bg-emerald-100 text-emerald-700', icon: Battery };
+      case 'HEAT': return { border: 'border-l-4 border-l-red-500', badge: 'bg-red-100 text-red-700', icon: Flame };
+      default: return { border: 'border-l-4 border-l-amber-500', badge: 'bg-amber-100 text-amber-700', icon: Zap }; // PV
+   }
+};
 
 export const Installations: React.FC<InstallationsProps> = ({ 
   installations, 
@@ -120,11 +139,15 @@ export const Installations: React.FC<InstallationsProps> = ({
        const isToday = inst.dateScheduled === new Date().toISOString().split('T')[0];
        const checklist = inst.equipmentStatus || { panelsPicked: false, inverterPicked: false, storagePicked: false, mountingPicked: false };
        const displayAddress = getInstallationAddress(inst);
+       const type = getInstallationType(inst);
+       const styleConfig = getTypeConfig(type);
 
        return (
-          <div key={inst.id} className={`bg-white rounded-2xl p-5 shadow-sm border ${isToday ? 'border-blue-500 ring-1 ring-blue-100' : 'border-slate-200'} mb-4`}>
+          <div key={inst.id} className={`bg-white rounded-2xl p-5 shadow-sm border ${isToday ? 'border-blue-500 ring-1 ring-blue-100' : 'border-slate-200'} mb-4 relative overflow-hidden`}>
+             <div className={`absolute left-0 top-0 bottom-0 w-1 ${styleConfig.border.replace('border-l-4', '').replace('border-l-', 'bg-')}`}></div>
+             
              {/* Header: Date & Status */}
-             <div className="flex justify-between items-start mb-4">
+             <div className="flex justify-between items-start mb-4 pl-3">
                 <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg ${isToday ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
                    <Calendar className="w-4 h-4" />
                    <span className="font-bold text-sm">
@@ -155,10 +178,13 @@ export const Installations: React.FC<InstallationsProps> = ({
              </div>
 
              {/* Address & Navigation */}
-             <div className="mb-6">
+             <div className="mb-6 pl-3">
                 <div className="flex items-start justify-between">
                    <div>
-                      <h3 className="text-lg font-bold text-slate-800 leading-tight mb-1">{displayAddress}</h3>
+                      <div className="flex items-center mb-1">
+                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded mr-2 ${styleConfig.badge}`}>{type}</span>
+                         <h3 className="text-lg font-bold text-slate-800 leading-tight">{displayAddress}</h3>
+                      </div>
                       <p className="text-sm text-slate-500 font-medium">{getCustomerName(inst.customerId)}</p>
                    </div>
                    <button 
@@ -182,14 +208,15 @@ export const Installations: React.FC<InstallationsProps> = ({
              </div>
 
              {/* Interactive Equipment Checklist */}
-             <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 space-y-3">
+             <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 space-y-3 ml-3">
                 <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
                    <div className="flex items-center"><Box className="w-4 h-4 mr-1" /> Lista Sprzętu</div>
                    <span className="text-[10px] bg-slate-200 px-2 py-0.5 rounded text-slate-600">Kliknij aby odhaczyć</span>
                 </div>
                 
                 <div className="grid grid-cols-1 gap-3">
-                   {/* Panels */}
+                   {/* Panels - Only if PV */}
+                   {(type === 'PV' || type === 'PVME') && (
                    <div 
                       onClick={() => toggleEquipment(inst, 'panelsPicked')}
                       className={`flex items-center p-3 rounded-lg border shadow-sm cursor-pointer transition-all ${checklist.panelsPicked ? 'bg-green-50 border-green-200' : 'bg-white border-slate-200 hover:border-blue-300'}`}
@@ -208,8 +235,10 @@ export const Installations: React.FC<InstallationsProps> = ({
                          <p className="text-[9px] text-slate-400">szt.</p>
                       </div>
                    </div>
+                   )}
 
-                   {/* Inverter */}
+                   {/* Inverter - Only if PV/PVME */}
+                   {(type === 'PV' || type === 'PVME') && (
                    <div 
                       onClick={() => toggleEquipment(inst, 'inverterPicked')}
                       className={`flex items-center p-3 rounded-lg border shadow-sm cursor-pointer transition-all ${checklist.inverterPicked ? 'bg-green-50 border-green-200' : 'bg-white border-slate-200 hover:border-blue-300'}`}
@@ -228,9 +257,10 @@ export const Installations: React.FC<InstallationsProps> = ({
                          <p className="text-[9px] text-slate-400">szt.</p>
                       </div>
                    </div>
+                   )}
                   
                    {/* Storage - Only show if exists */}
-                   {inst.storageModel && (
+                   {(type === 'PVME' || type === 'ME') && (
                       <div 
                         onClick={() => toggleEquipment(inst, 'storagePicked')}
                         className={`flex items-center p-3 rounded-lg border shadow-sm cursor-pointer transition-all ${checklist.storagePicked ? 'bg-green-50 border-green-200' : 'bg-white border-slate-200 hover:border-blue-300'}`}
@@ -241,12 +271,29 @@ export const Installations: React.FC<InstallationsProps> = ({
                         <div className="flex-1">
                            <p className={`text-[10px] font-bold uppercase ${checklist.storagePicked ? 'text-green-600' : 'text-slate-400'}`}>Magazyn Energii</p>
                            <p className={`text-sm font-bold ${checklist.storagePicked ? 'text-green-800 line-through decoration-2 opacity-70' : 'text-slate-800'}`}>
-                              {inst.storageModel}
+                              {inst.storageModel || 'Brak modelu'}
                            </p>
                         </div>
                         <div className="text-right pl-2 border-l border-slate-100">
                            <p className="text-lg font-bold text-slate-800">{inst.storageSizeKw}</p>
                            <p className="text-[9px] text-slate-400">kWh</p>
+                        </div>
+                      </div>
+                   )}
+
+                   {/* Heat Pump - Only show if Heat */}
+                   {type === 'HEAT' && (
+                      <div 
+                        className={`flex items-center p-3 rounded-lg border shadow-sm transition-all bg-white border-slate-200`}
+                      >
+                        <div className={`p-2 rounded-lg mr-3 bg-red-50 text-red-600`}>
+                           <Flame className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1">
+                           <p className={`text-[10px] font-bold uppercase text-slate-400`}>Urządzenie Grzewcze</p>
+                           <p className={`text-sm font-bold text-slate-800`}>
+                              {inst.notes?.split('Urządzenie:')[1] || 'Szczegóły w notatce'}
+                           </p>
                         </div>
                       </div>
                    )}
@@ -261,7 +308,7 @@ export const Installations: React.FC<InstallationsProps> = ({
                          <div className="flex items-center">
                             {inst.trenchLength ? <Shovel className="w-4 h-4 mr-2" /> : <Home className="w-4 h-4 mr-2" />}
                             <span className={`font-medium ${checklist.mountingPicked ? 'line-through opacity-70' : ''}`}>
-                               {inst.mountingSystem || (inst.trenchLength ? `System Gruntowy (${inst.trenchLength}mb)` : 'System Dachowy')}
+                               {inst.mountingSystem || (inst.trenchLength ? `System Gruntowy (${inst.trenchLength}mb)` : 'System Montażowy')}
                             </span>
                          </div>
                       </div>
@@ -270,7 +317,7 @@ export const Installations: React.FC<InstallationsProps> = ({
              </div>
 
              {/* Footer Actions */}
-             <div className="mt-5 pt-4 border-t border-slate-100 flex justify-end">
+             <div className="mt-5 pt-4 border-t border-slate-100 flex justify-end pl-3">
                 <button 
                   onClick={() => onNavigateToCustomer(inst.customerId)}
                   className="w-full flex items-center justify-center bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-900 transition-colors shadow-lg"
@@ -338,26 +385,40 @@ export const Installations: React.FC<InstallationsProps> = ({
                <div className="flex-1 space-y-1">
                  {dayJobs.map(job => {
                    const city = (getInstallationAddress(job) || '').split(',')[0].trim();
+                   const type = getInstallationType(job);
+                   let jobColor = 'border-blue-200';
+                   if (type === 'HEAT') jobColor = 'border-red-200 bg-red-50';
+                   else if (type === 'PVME') jobColor = 'border-indigo-200 bg-indigo-50';
+                   else if (type === 'ME') jobColor = 'border-emerald-200 bg-emerald-50';
+
                    return (
                      <div 
                         key={job.id} 
                         onClick={() => onNavigateToCustomer(job.customerId)} 
-                        className="p-1.5 rounded-lg bg-white border border-blue-200 shadow-sm cursor-pointer hover:border-blue-400 transition-all group"
+                        className={`p-1.5 rounded-lg border shadow-sm cursor-pointer hover:border-blue-400 transition-all group ${jobColor}`}
                      >
                         <div className="flex items-center text-[10px] font-bold text-slate-700 truncate">
                            <MapPin className="w-3 h-3 mr-1 text-blue-500 shrink-0" />
                            {city || 'Adres'}
                         </div>
                         <div className="flex flex-col items-start mt-0.5 ml-4">
-                           <div className="flex items-center text-[9px] font-medium text-slate-500">
-                              <Zap className="w-2.5 h-2.5 mr-1 text-amber-500" />
-                              {job.systemSizeKw} kWp
-                           </div>
-                           {job.storageSizeKw && job.storageSizeKw > 0 && (
-                              <div className="flex items-center text-[9px] font-medium text-green-600">
-                                 <Battery className="w-2.5 h-2.5 mr-1" />
-                                 {job.storageSizeKw} kWh
+                           {type === 'HEAT' ? (
+                              <div className="flex items-center text-[9px] font-medium text-red-600">
+                                 <Flame className="w-2.5 h-2.5 mr-1" /> Ogrzewanie
                               </div>
+                           ) : (
+                              <>
+                                 <div className="flex items-center text-[9px] font-medium text-slate-500">
+                                    <Zap className="w-2.5 h-2.5 mr-1 text-amber-500" />
+                                    {job.systemSizeKw} kWp
+                                 </div>
+                                 {job.storageSizeKw && job.storageSizeKw > 0 && (
+                                    <div className="flex items-center text-[9px] font-medium text-green-600">
+                                       <Battery className="w-2.5 h-2.5 mr-1" />
+                                       {job.storageSizeKw} kWh
+                                    </div>
+                                 )}
+                              </>
                            )}
                         </div>
                      </div>
@@ -458,11 +519,14 @@ export const Installations: React.FC<InstallationsProps> = ({
   const columns = [
     { id: InstallationStatus.NEW, title: 'Nowe', color: 'bg-slate-100 border-slate-200' },
     { id: InstallationStatus.AUDIT, title: 'Audyt', color: 'bg-blue-50 border-blue-100' },
-    { id: InstallationStatus.PROJECT, title: 'Projekt', color: 'bg-indigo-50 border-indigo-100' },
+    { id: InstallationStatus.CONTRACT, title: 'Umowa', color: 'bg-indigo-50 border-indigo-100' },
+    { id: InstallationStatus.CONTRACT_RESCUE, title: 'Do Uratowania', color: 'bg-orange-50 border-orange-200 ring-2 ring-orange-100' }, // Added
+    { id: InstallationStatus.PROJECT, title: 'Projekt', color: 'bg-violet-50 border-violet-100' },
     { id: InstallationStatus.INSTALLATION, title: 'Montaż', color: 'bg-amber-50 border-amber-100' },
     { id: InstallationStatus.GRID_CONNECTION, title: 'OSD', color: 'bg-purple-50 border-purple-100' },
     { id: InstallationStatus.GRANT_APPLICATION, title: 'Dotacje', color: 'bg-pink-50 border-pink-100' },
     { id: InstallationStatus.COMPLETED, title: 'Zakończone', color: 'bg-green-50 border-green-100' },
+    { id: InstallationStatus.DROP, title: 'Spadek', color: 'bg-gray-100 border-gray-300 opacity-70' }, // Added
   ];
 
   return (
@@ -512,27 +576,25 @@ export const Installations: React.FC<InstallationsProps> = ({
                      {colInstalls.map(inst => {
                        const paymentPercent = inst.price > 0 ? (inst.paidAmount / inst.price) * 100 : 0;
                        const noDate = !inst.dateScheduled;
+                       const type = getInstallationType(inst);
+                       const styleConfig = getTypeConfig(type);
 
                        return (
                        <div 
                         key={inst.id} 
                         onClick={() => onNavigateToCustomer(inst.customerId)}
-                        className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 hover:shadow-md hover:border-blue-200 transition-all cursor-pointer group flex flex-col gap-3 relative overflow-hidden"
+                        className={`bg-white p-4 rounded-xl shadow-sm border ${styleConfig.border} hover:shadow-md hover:border-l-8 transition-all cursor-pointer group flex flex-col gap-3 relative overflow-hidden`}
                        >
                          {/* Header Line */}
                          <div className="flex justify-between items-start">
                            <span className="text-[10px] font-bold text-slate-400 font-mono">#{inst.id.slice(0,6)}</span>
                            <div className="flex gap-1">
-                              <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded-md border border-slate-200 shadow-sm flex items-center">
-                                 <Zap className="w-2.5 h-2.5 mr-1 text-amber-500" />
-                                 {inst.systemSizeKw} kWp
+                              <span className={`text-[10px] font-bold px-2 py-1 rounded-md border border-slate-200 shadow-sm flex items-center ${styleConfig.badge}`}>
+                                 <styleConfig.icon className="w-2.5 h-2.5 mr-1" />
+                                 {type === 'HEAT' ? 'Ogrzewanie' : 
+                                  type === 'PVME' ? 'Hybryda' : 
+                                  type === 'ME' ? 'Magazyn' : 'PV'}
                               </span>
-                              {inst.storageSizeKw && inst.storageSizeKw > 0 && (
-                                 <span className="text-[10px] font-bold bg-green-50 text-green-700 px-2 py-1 rounded-md border border-green-100 shadow-sm flex items-center">
-                                    <Battery className="w-2.5 h-2.5 mr-1" />
-                                    {inst.storageSizeKw} kWh
-                                 </span>
-                              )}
                            </div>
                          </div>
                          
