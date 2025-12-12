@@ -1,6 +1,7 @@
+
 // ... (imports remain same)
 import React, { useState, useMemo, useEffect } from 'react';
-import { ArrowLeft, Presentation, Battery, Wind, Flame, Zap, Sun, User, CheckCircle, ChevronRight, ChevronLeft, BarChart3, Upload, Plus, Home, Hammer, Shovel, ShieldCheck, Banknote, Save, AlertTriangle, ArrowUpRight, CheckSquare, Coins, Calculator, Percent, ChevronDown, ChevronUp, CalendarClock, Server, Box, Cpu, FileText, Lightbulb, TrendingUp, GitMerge, Thermometer, Droplets, Fan, Leaf, Gauge, ExternalLink, Info, Search, Wrench, Check, Tag, UserCheck, Smartphone, Settings } from 'lucide-react';
+import { ArrowLeft, Presentation, Battery, Wind, Flame, Zap, Sun, User, CheckCircle, ChevronRight, BarChart3, Upload, Plus, Home, Hammer, Shovel, ShieldCheck, Banknote, Save, AlertTriangle, ArrowUpRight, CheckSquare, Coins, Calculator, Percent, ChevronDown, ChevronUp, CalendarClock, Server, Box, Cpu, FileText, Lightbulb, TrendingUp, GitMerge, Thermometer, Droplets, Fan, Leaf, Gauge, ExternalLink, Info, Search, Wrench, Check, Tag, UserCheck, Smartphone, Settings } from 'lucide-react';
 import { Customer, InventoryItem, ProductCategory, CalculatorState, Offer, TariffType, User as AppUser, SystemSettings, AppTool, HeatingCalculatorState, StorageCalculatorState } from '../types';
 
 interface ApplicationsProps {
@@ -1382,39 +1383,18 @@ export const Applications: React.FC<ApplicationsProps> = ({
             )}
         </div>
 
-        <div className="p-4 md:p-6 bg-white border-t border-slate-200 flex justify-between items-center shrink-0 shadow-[0_-8px_30px_rgba(0,0,0,0.05)] z-20 relative">
-           <button 
-             onClick={() => setCalc({...calc, step: Math.max(1, calc.step - 1)})} 
-             disabled={calc.step === 1} 
-             className="group px-6 py-3 md:px-8 md:py-4 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-50 hover:border-slate-300 hover:text-slate-800 transition-all text-sm md:text-base flex items-center"
-           >
-             <ChevronLeft className="w-5 h-5 mr-2 group-hover:-translate-x-1 transition-transform" /> Wstecz
-           </button>
-           
-           {calc.step < 6 && (
-             <button 
-               disabled={calc.step === 3 && !canProceedStep3} 
-               onClick={() => setCalc({...calc, step: Math.min(6, calc.step + 1)})} 
-               className={`group px-8 py-3 md:px-12 md:py-4 rounded-2xl font-extrabold shadow-xl text-sm md:text-lg flex items-center transition-all transform hover:-translate-y-1 hover:shadow-2xl ${
-                 calc.step === 3 && !canProceedStep3 
-                   ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' 
-                   : 'bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:from-amber-600 hover:to-orange-700 shadow-orange-500/30'
-               }`}
-             >
-               {calc.step === 3 && !canProceedStep3 ? 'Zatwierdź ryzyko' : 'Dalej'} <ChevronRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
-             </button>
-           )}
+        <div className="p-4 md:p-6 bg-slate-50 border-t border-slate-200 flex justify-between items-center shrink-0">
+           <button onClick={() => setCalc({...calc, step: Math.max(1, calc.step - 1)})} disabled={calc.step === 1} className="px-4 py-2 md:px-6 md:py-3 rounded-xl border border-slate-300 text-slate-600 font-bold disabled:opacity-50 text-sm md:text-base">Wstecz</button>
+           {calc.step < 6 && <button disabled={calc.step === 3 && !canProceedStep3} onClick={() => setCalc({...calc, step: Math.min(6, calc.step + 1)})} className={`px-6 py-2 md:px-8 md:py-3 rounded-xl font-bold shadow-lg text-sm md:text-base ${calc.step === 3 && !canProceedStep3 ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-amber-500 text-white hover:bg-amber-600'}`}>{calc.step === 3 && !canProceedStep3 ? 'Zatwierdź ryzyko' : 'Dalej'}</button>}
         </div>
       </div>
     );
   };
 
   const renderHeatingCalculator = () => {
-    // ... (keep existing code)
-    // inside renderHeatingCalculator, locate the last div (footer)
-    // ... (abridged for brevity, assume content above is same as before)
-    // ...
-    // ...
+    // ... (Code for heating calculator from previous version)
+    // To be concise, assume no changes here
+    // ... 
     const heatPumps = inventory.filter(i => i.category === ProductCategory.HEAT_PUMP);
     const boilers = inventory.filter(i => i.category === ProductCategory.BOILER);
     const availableDevices = heatCalc.systemType === 'HEAT_PUMP' ? heatPumps : boilers;
@@ -1671,9 +1651,6 @@ export const Applications: React.FC<ApplicationsProps> = ({
                </div>
             )}
 
-            {/* ... Other HeatCalc Steps (4 and 5) omitted for brevity as they are unchanged except for footer */}
-            {/* Only footer part changed */}
-            
             {heatCalc.step === 4 && (
                <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
                   
@@ -1785,19 +1762,17 @@ export const Applications: React.FC<ApplicationsProps> = ({
                </div>
             )}
 
-            {/* Heat Calc Step 5 Logic and JSX (Summary) */}
             {heatCalc.step === 5 && (
                <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-                  {/* ... (Summary content remains same, only footer updates) ... */}
                   {/* Product Image & Full Spec */}
                   {heatingFinancials.selectedDevice?.url && (
                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-6 items-start">
                         <img src={heatingFinancials.selectedDevice.url} alt="Produkt" className="w-full md:w-1/3 rounded-xl object-cover shadow-md" />
                         <div className="flex-1">
                            <h3 className="text-2xl font-bold text-slate-800 mb-4">{heatingFinancials.selectedDevice.name}</h3>
-                           {/* ... */}
-                           {/* (Rest of summary fields) */}
+                           
                            <div className="grid grid-cols-2 gap-4 text-sm mb-4">
+                              {/* Conditionally Render Specs - Only show if valid value exists */}
                               {translateType(heatingFinancials.selectedDevice.heatPumpType) !== '-' && (
                                  <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
                                     <p className="text-xs text-slate-500 font-bold uppercase mb-1">Typ</p>
@@ -1829,6 +1804,7 @@ export const Applications: React.FC<ApplicationsProps> = ({
                               <span className="font-bold text-slate-700">Gwarancja: {heatingFinancials.selectedDevice.warranty}</span>
                            </div>
 
+                           {/* Accessories List moved here */}
                            {heatingFinancials.selectedAccessories.length > 0 && (
                               <div className="pt-2 border-t border-slate-100">
                                  <span className="text-xs font-bold text-slate-400 uppercase block mb-2">Wybrane Akcesoria</span>
@@ -1846,6 +1822,7 @@ export const Applications: React.FC<ApplicationsProps> = ({
                      </div>
                   )}
 
+                  {/* Summary */}
                   <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-200">
                      <h3 className="text-2xl font-bold text-slate-800 mb-6 pb-4 border-b">Podsumowanie Oferty</h3>
                      
@@ -1855,6 +1832,9 @@ export const Applications: React.FC<ApplicationsProps> = ({
                            <span className="font-bold text-lg text-slate-800">{Math.round(heatingFinancials.totalSystemPrice).toLocaleString()} PLN</span>
                         </div>
 
+                        {/* Order: Gross -> Discount -> Tax -> Subsidy -> Final */}
+                        
+                        {/* Discount Display: Only show if strictly greater than 0 */}
                         {heatCalc.discountAmount && heatCalc.discountAmount > 0 ? (
                            <div className="flex justify-between items-center text-red-600 bg-red-50 p-2 rounded-lg">
                               <span className="flex items-center font-bold"><Tag className="w-4 h-4 mr-2"/> Rabat Specjalny ({heatCalc.discountAuthor === 'SALES_DIRECTOR' ? 'Dyr. Handlowy' : heatCalc.discountAuthor === 'SALES_MANAGER' ? 'Kierownik' : 'Biuro'})</span>
@@ -1863,6 +1843,7 @@ export const Applications: React.FC<ApplicationsProps> = ({
                         ) : null}
 
                         <div className="space-y-3 mt-4 border-t border-slate-100 pt-4">
+                           {/* 1. Tax Relief */}
                            {heatingFinancials.taxReturn > 0 && (
                               <div className="flex justify-between items-center text-blue-600">
                                  <span className="flex items-center text-sm font-medium"><Percent className="w-4 h-4 mr-2"/> Ulga Termomodernizacyjna ({heatCalc.taxRelief}%)</span>
@@ -1870,6 +1851,7 @@ export const Applications: React.FC<ApplicationsProps> = ({
                               </div>
                            )}
 
+                           {/* 2. Subsidy */}
                            {heatingFinancials.subsidyAmount > 0 && (
                               <div className="flex justify-between items-center text-green-600">
                                  <span className="flex items-center text-sm font-medium"><Coins className="w-4 h-4 mr-2"/> Dotacja ({heatCalc.subsidyProgram === 'CZYSTE_POWIETRZE' ? 'Czyste Powietrze' : 'Moje Ciepło'})</span>
@@ -1883,6 +1865,7 @@ export const Applications: React.FC<ApplicationsProps> = ({
                            </div>
                         </div>
 
+                        {/* ROI Chart */}
                         {currentUser.salesSettings?.showRoiChart && (
                            <div className="mt-8 pt-8 border-t border-slate-200">
                               <h4 className="font-bold text-slate-800 mb-6 flex items-center"><BarChart3 className="w-5 h-5 mr-2" /> Zwrot z inwestycji (15 lat)</h4>
@@ -1890,8 +1873,9 @@ export const Applications: React.FC<ApplicationsProps> = ({
                               <div className="h-48 flex items-end gap-1 border-b border-slate-300 pb-1 relative">
                                  <div className="absolute top-1/2 w-full border-t border-slate-300 border-dashed opacity-50"></div>
                                  {heatingFinancials.roiChartData.map((d) => {
+                                    // Normalize for chart height
                                     const maxVal = Math.max(...heatingFinancials.roiChartData.map(i => Math.abs(i.balance))) || 1;
-                                    const heightPercent = Math.min(100, (Math.abs(d.balance) / maxVal) * 50);
+                                    const heightPercent = Math.min(100, (Math.abs(d.balance) / maxVal) * 50); // Scale to half height per direction
                                     
                                     return (
                                        <div key={d.year} className="flex-1 flex flex-col justify-end h-full relative group">
@@ -1900,6 +1884,8 @@ export const Applications: React.FC<ApplicationsProps> = ({
                                           ) : (
                                              <div className="w-full bg-red-400 rounded-b-sm mx-0.5 absolute top-1/2" style={{ height: `${heightPercent}%` }}></div>
                                           )}
+                                          
+                                          {/* Tooltip */}
                                           <div className="hidden group-hover:block absolute bottom-full left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] p-2 rounded mb-1 z-10 whitespace-nowrap">
                                              Rok {d.year}: {Math.round(d.balance).toLocaleString()} PLN
                                           </div>
@@ -1921,6 +1907,7 @@ export const Applications: React.FC<ApplicationsProps> = ({
                            </div>
                         )}
 
+                        {/* Heating Loan Simulator (NEW) */}
                         <div className="mt-6 border border-blue-100 bg-blue-50/50 rounded-xl overflow-hidden">
                            <button onClick={() => setShowLoanCalc(!showLoanCalc)} className="w-full flex justify-between items-center p-4 text-blue-700 font-bold text-sm hover:bg-blue-100/50">
                                <span className="flex items-center"><Calculator className="w-4 h-4 mr-2" /> Symulacja Abonamentu (Ogrzewanie)</span>
@@ -1985,23 +1972,10 @@ export const Applications: React.FC<ApplicationsProps> = ({
             )}
         </div>
 
-        <div className="p-4 md:p-6 bg-white border-t border-slate-200 flex justify-between items-center shrink-0 shadow-[0_-8px_30px_rgba(0,0,0,0.05)] z-20 relative">
-           <button 
-             onClick={() => setHeatCalc({...heatCalc, step: Math.max(1, heatCalc.step - 1)})} 
-             disabled={heatCalc.step === 1} 
-             className="group px-6 py-3 md:px-8 md:py-4 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-50 hover:border-slate-300 hover:text-slate-800 transition-all text-sm md:text-base flex items-center"
-           >
-             <ChevronLeft className="w-5 h-5 mr-2 group-hover:-translate-x-1 transition-transform" /> Wstecz
-           </button>
-           
-           {heatCalc.step < 5 && (
-             <button 
-               onClick={() => setHeatCalc({...heatCalc, step: Math.min(5, heatCalc.step + 1)})} 
-               className="group px-8 py-3 md:px-12 md:py-4 rounded-2xl font-extrabold shadow-xl text-sm md:text-lg flex items-center transition-all transform hover:-translate-y-1 hover:shadow-2xl bg-gradient-to-r from-red-600 to-rose-700 text-white hover:from-red-700 hover:to-rose-800 shadow-red-500/30"
-             >
-               Dalej <ChevronRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
-             </button>
-           )}
+        {/* Footer Navigation */}
+        <div className="p-4 md:p-6 bg-slate-50 border-t border-slate-200 flex justify-between items-center shrink-0">
+           <button onClick={() => setHeatCalc({...heatCalc, step: Math.max(1, heatCalc.step - 1)})} disabled={heatCalc.step === 1} className="px-4 py-2 md:px-6 md:py-3 rounded-xl border border-slate-300 text-slate-600 font-bold disabled:opacity-50 text-sm md:text-base">Wstecz</button>
+           {heatCalc.step < 5 && <button onClick={() => setHeatCalc({...heatCalc, step: Math.min(5, heatCalc.step + 1)})} className="px-6 py-2 md:px-8 md:py-3 rounded-xl font-bold shadow-lg text-sm md:text-base bg-red-600 text-white hover:bg-red-700">Dalej</button>}
         </div>
       </div>
     );
@@ -2382,23 +2356,10 @@ export const Applications: React.FC<ApplicationsProps> = ({
               )}
            </div>
 
-           <div className="p-4 md:p-6 bg-white border-t border-slate-200 flex justify-between items-center shrink-0 shadow-[0_-8px_30px_rgba(0,0,0,0.05)] z-20 relative">
-              <button 
-                onClick={() => setStorageCalc({...storageCalc, step: Math.max(1, storageCalc.step - 1)})} 
-                disabled={storageCalc.step === 1} 
-                className="group px-6 py-3 md:px-8 md:py-4 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-50 hover:border-slate-300 hover:text-slate-800 transition-all text-sm md:text-base flex items-center"
-              >
-                 <ChevronLeft className="w-5 h-5 mr-2 group-hover:-translate-x-1 transition-transform" /> Wstecz
-              </button>
-              
-              {storageCalc.step < 5 && (
-                <button 
-                  onClick={() => setStorageCalc({...storageCalc, step: Math.min(5, storageCalc.step + 1)})} 
-                  className="group px-8 py-3 md:px-12 md:py-4 rounded-2xl font-extrabold shadow-xl text-sm md:text-lg flex items-center transition-all transform hover:-translate-y-1 hover:shadow-2xl bg-gradient-to-r from-green-600 to-emerald-700 text-white hover:from-green-700 hover:to-emerald-800 shadow-green-500/30"
-                >
-                   Dalej <ChevronRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
-                </button>
-              )}
+           {/* Footer Navigation */}
+           <div className="p-4 md:p-6 bg-slate-50 border-t border-slate-200 flex justify-between items-center shrink-0">
+              <button onClick={() => setStorageCalc({...storageCalc, step: Math.max(1, storageCalc.step - 1)})} disabled={storageCalc.step === 1} className="px-4 py-2 md:px-6 md:py-3 rounded-xl border border-slate-300 text-slate-600 font-bold disabled:opacity-50 text-sm md:text-base">Wstecz</button>
+              {storageCalc.step < 5 && <button onClick={() => setStorageCalc({...storageCalc, step: Math.min(5, storageCalc.step + 1)})} className="px-6 py-2 md:px-8 md:py-3 rounded-xl font-bold shadow-lg text-sm md:text-base bg-green-600 text-white hover:bg-green-700">Dalej</button>}
            </div>
         </div>
      );
@@ -2469,7 +2430,3 @@ export const Applications: React.FC<ApplicationsProps> = ({
     </div>
   );
 };
-
-// ... (Rest of file truncated for brevity if not changing, but full content needed for XML)
-// Since I must return full content and I modified `renderPvCalculator` and `renderHeatingCalculator` and `renderStorageCalculator` footers...
-// I will output the FULL file content with all modifications.
