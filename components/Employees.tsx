@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { User, UserRole, SystemSettings } from '../types';
-import { Plus, Save, Trash2, UserCog, Settings, UserCircle, X, Edit2, Mail, Lock, Percent, AlertCircle } from 'lucide-react';
+import { Plus, Save, Trash2, UserCog, Settings, UserCircle, X, Edit2, Mail, Lock, Percent, AlertCircle, AlertTriangle, ShieldCheck, Key } from 'lucide-react';
+import { supabase } from '../services/supabaseClient';
 
 interface EmployeesProps {
   users?: User[];
@@ -24,8 +25,10 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [showAddModal, setShowAddModal] = useState(false);
   
   // State for Editing
-  // Use a type that allows commissionSplit to be undefined/string during editing for validation
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  
+  // State for Deleting Confirmation
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
   // State for Adding
   const [newUser, setNewUser] = useState<Partial<User>>({
@@ -90,10 +93,17 @@ export const Employees: React.FC<EmployeesProps> = ({
      }
   };
 
-  const handleDeleteClick = (userId: string) => {
-     if (window.confirm("Czy na pewno chcesz usunąć tego pracownika? Tej operacji nie można cofnąć.")) {
-        onDeleteUser(userId);
-        if (editingUser?.id === userId) setEditingUser(null);
+  const handleInitiateDelete = (user: User) => {
+     setUserToDelete(user);
+  };
+
+  const confirmDelete = () => {
+     if (userToDelete) {
+        onDeleteUser(userToDelete.id);
+        if (editingUser?.id === userToDelete.id) {
+           setEditingUser(null);
+        }
+        setUserToDelete(null);
      }
   };
 
@@ -102,6 +112,30 @@ export const Employees: React.FC<EmployeesProps> = ({
       cat2MarkupType: markupType,
       cat2MarkupValue: markupValue
     });
+  };
+
+  const handleResetPassword = async () => {
+     if (!editingUser?.email) {
+        alert("Błąd: Użytkownik nie posiada adresu email.");
+        return;
+     }
+     
+     if (window.confirm(`Czy na pewno wysłać e-mail resetujący hasło do użytkownika ${editingUser.name} (${editingUser.email})?`)) {
+        try {
+           const { error } = await supabase.auth.resetPasswordForEmail(editingUser.email, {
+              redirectTo: window.location.origin, // Redirect back to app
+           });
+           
+           if (error) throw error;
+           
+           alert(`Sukces! Wysłano e-mail resetujący hasło na adres: ${editingUser.email}`);
+        } catch (error: any) {
+           console.error("Reset password error", error);
+           let errorMsg = error.message;
+           if (errorMsg.includes("rate limit")) errorMsg = "Przekroczono limit wysyłania e-maili. Spróbuj później.";
+           alert("Błąd wysyłania e-maila: " + errorMsg);
+        }
+     }
   };
 
   const isCommissionInvalid = (val: number | undefined | null) => {
@@ -475,10 +509,30 @@ export const Employees: React.FC<EmployeesProps> = ({
                            </div>
                         </div>
                      </div>
+
+                     {/* Security Section - Password Reset */}
+                     <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
+                        <div className="flex items-center space-x-2 text-slate-800 font-bold text-sm pb-2 border-b border-slate-200">
+                           <ShieldCheck className="w-4 h-4" /> <span>Bezpieczeństwo</span>
+                        </div>
+                        <div>
+                           <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Zmiana Hasła</label>
+                           <p className="text-[10px] text-slate-400 mb-3">
+                              Administrator nie może bezpośrednio zmienić hasła użytkownika. Możesz wysłać e-mail z linkiem do resetowania hasła.
+                           </p>
+                           <button 
+                              type="button"
+                              onClick={handleResetPassword}
+                              className="w-full flex items-center justify-center px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-100 hover:text-blue-600 hover:border-blue-300 transition-all shadow-sm"
+                           >
+                              <Key className="w-4 h-4 mr-2" /> Wyślij e-mail resetujący hasło
+                           </button>
+                        </div>
+                     </div>
                   </form>
                 </div>
                 <div className="p-5 border-t border-slate-100 flex justify-between items-center bg-white rounded-b-xl shrink-0">
-                    <button type="button" onClick={() => handleDeleteClick(editingUser.id)} className="px-4 py-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg font-bold flex items-center">
+                    <button type="button" onClick={() => handleInitiateDelete(editingUser)} className="px-4 py-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg font-bold flex items-center">
                        <Trash2 className="w-4 h-4 mr-2" /> Usuń
                     </button>
                     <div className="flex space-x-3">
@@ -494,6 +548,39 @@ export const Employees: React.FC<EmployeesProps> = ({
                     </div>
                 </div>
              </div>
+         </div>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {userToDelete && (
+         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setUserToDelete(null)}></div>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md relative z-20 p-6 text-center animate-shake">
+               <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <AlertTriangle className="w-8 h-8 text-red-600" />
+               </div>
+               <h3 className="text-xl font-bold text-slate-800 mb-2">Usunąć Pracownika?</h3>
+               <p className="text-slate-600 text-sm mb-4">
+                  Czy na pewno chcesz usunąć <b>{userToDelete.name}</b>?
+               </p>
+               <div className="bg-red-50 border border-red-100 p-3 rounded-xl mb-6 text-left text-xs text-red-700">
+                  <p className="font-bold mb-1">Konsekwencje:</p>
+                  <ul className="list-disc list-inside space-y-1">
+                     <li>Użytkownik straci dostęp do systemu.</li>
+                     <li>Jego klienci zostaną oznaczeni jako "bez opiekuna".</li>
+                     <li>Zadania przypisane do niego wrócą do Ciebie.</li>
+                  </ul>
+               </div>
+               
+               <div className="flex gap-3">
+                  <button onClick={() => setUserToDelete(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors">
+                     Anuluj
+                  </button>
+                  <button onClick={confirmDelete} className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 shadow-lg shadow-red-200 transition-colors">
+                     Usuń Trwale
+                  </button>
+               </div>
+            </div>
          </div>
       )}
     </div>

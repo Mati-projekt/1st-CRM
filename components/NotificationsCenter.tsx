@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { AppNotification, NotificationCategory, ViewState, UserRole, User } from '../types';
 import { Bell, CheckCircle, Trash2, Filter, DollarSign, Package, Wrench, Mail, AlertTriangle, ArrowRight, Archive, Inbox, Eye } from 'lucide-react';
@@ -27,8 +28,11 @@ export const NotificationsCenter: React.FC<NotificationsCenterProps> = ({
   const filteredNotifications = useMemo(() => {
     let sorted = [...notifications].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     
-    // Role-based filtering: Only Admin and Office see 'STOCK' alerts
-    if (currentUser && currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.OFFICE) {
+    // Explicit Role-based filtering for STOCK alerts
+    // Only ADMIN and OFFICE can see low stock alerts
+    const canSeeStock = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.OFFICE;
+    
+    if (!canSeeStock) {
        sorted = sorted.filter(n => n.category !== 'STOCK');
     }
 
@@ -46,7 +50,17 @@ export const NotificationsCenter: React.FC<NotificationsCenterProps> = ({
     return sorted;
   }, [notifications, activeFilter, viewMode, currentUser]);
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  // Fix: Calculate unread count based on visible notifications (role filtered)
+  const unreadCount = useMemo(() => {
+     let visible = notifications;
+     const canSeeStock = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.OFFICE;
+     
+     if (!canSeeStock) {
+        visible = visible.filter(n => n.category !== 'STOCK');
+     }
+     
+     return visible.filter(n => !n.read).length;
+  }, [notifications, currentUser]);
 
   const getCategoryIcon = (cat: NotificationCategory) => {
      switch(cat) {
@@ -120,7 +134,11 @@ export const NotificationsCenter: React.FC<NotificationsCenterProps> = ({
        <div className="flex flex-col md:flex-row justify-between items-center gap-4 border-b border-slate-200 pb-4">
           {/* Category Filters */}
           <div className="flex space-x-2 overflow-x-auto pb-2 md:pb-0 w-full md:w-auto hide-scrollbar">
-             {categories.map(cat => (
+             {categories.map(cat => {
+                // Hide STOCK filter if user can't see stock notifications
+                if (cat.id === 'STOCK' && currentUser?.role !== UserRole.ADMIN && currentUser?.role !== UserRole.OFFICE) return null;
+                
+                return (
                 <button
                   key={cat.id}
                   onClick={() => setActiveFilter(cat.id)}
@@ -132,7 +150,7 @@ export const NotificationsCenter: React.FC<NotificationsCenterProps> = ({
                 >
                    {cat.label}
                 </button>
-             ))}
+             )})}
           </div>
 
           {viewMode === 'UNREAD' && unreadCount > 0 && (

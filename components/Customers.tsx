@@ -1,12 +1,11 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Customer, Installation, User, InventoryItem, Offer, CustomerNote, UserRole, PaymentEntry, UploadedFile, InstallationStatus, NotificationType, CalculatorState, HeatingCalculatorState } from '../types';
+import { Customer, Installation, User, InventoryItem, Offer, CustomerNote, UserRole, PaymentEntry, UploadedFile, InstallationStatus, NotificationType, CalculatorState, HeatingCalculatorState, StorageCalculatorState } from '../types';
 import { 
   Search, Plus, User as UserIcon, Phone, Mail, MapPin, FileText, 
   Wrench, DollarSign, Calendar, Clock, Send, MessageSquare, 
   Trash2, Edit2, Save, X, CheckCircle, AlertTriangle, 
   History as HistoryIcon, Paperclip, ExternalLink, Download, 
-  MoreVertical, FilePlus, ChevronRight, PenTool, Image as ImageIcon, Briefcase, CreditCard, Camera, ClipboardCheck, Video, FileCheck, ToggleLeft, ToggleRight, Info, Home, Zap, Battery, Cpu, ArrowDownToLine, Shovel, Eye, ZoomIn, ZoomOut, MessageSquarePlus, Maximize, Minus, Check, Loader2
+  MoreVertical, FilePlus, ChevronRight, PenTool, Image as ImageIcon, Briefcase, CreditCard, Camera, ClipboardCheck, Video, FileCheck, ToggleLeft, ToggleRight, Info, Home, Zap, Battery, Cpu, ArrowDownToLine, Shovel, Eye, ZoomIn, ZoomOut, MessageSquarePlus, Maximize, Minus, Check, Loader2, Move, Lock
 } from 'lucide-react';
 
 interface CustomersProps {
@@ -31,17 +30,17 @@ interface CustomersProps {
 
 // Updated 11 Steps Audit List
 const AUDIT_STEPS = [
-   { id: 1, label: '1. Film przedstawiający drogę instalacji ME', type: 'VIDEO' },
-   { id: 2, label: '2. Zdjęcie rozdzielnicy głównej z widocznymi wartościami', type: 'PHOTO' },
-   { id: 3, label: '3. Zdjęcie licznika', type: 'PHOTO' },
-   { id: 4, label: '4. Zdjęcie miejsca montażu falownika i ME', type: 'PHOTO' },
-   { id: 5, label: '5. Zdjęcie miejsca montażu paneli (dach/grunt)', type: 'PHOTO' },
-   { id: 6, label: '6. Zdjęcia trasy kablowej/przekopu', type: 'PHOTO' },
-   { id: 7, label: '7. Zdjęcie/skan faktury za energię (PPE, moc, taryfa)', type: 'doc' },
-   { id: 8, label: '8. Zdjęcie istniejącej instalacji (panele/falowniki)', type: 'PHOTO' },
-   { id: 9, label: '9. Zdjęcie miejsca wpięcia starej instalacji', type: 'PHOTO' },
-   { id: 10, label: '10. Zdjęcia tabliczek znamionowych (panele/falownik)', type: 'PHOTO' },
-   { id: 11, label: '11. Zdjęcie/skan umowy dot. poprzedniej instalacji', type: 'doc' },
+   { id: 1, label: '1. Film instalacji ME', type: 'VIDEO' },
+   { id: 2, label: '2. Rozdzielnica główna', type: 'PHOTO' },
+   { id: 3, label: '3. Licznik', type: 'PHOTO' },
+   { id: 4, label: '4. Miejsce falownika/ME', type: 'PHOTO' },
+   { id: 5, label: '5. Miejsce montażu paneli', type: 'PHOTO' },
+   { id: 6, label: '6. Trasa kablowa/przekop', type: 'PHOTO' },
+   { id: 7, label: '7. Faktura za energię', type: 'doc' },
+   { id: 8, label: '8. Istniejąca instalacja', type: 'PHOTO' },
+   { id: 9, label: '9. Miejsce wpięcia starej', type: 'PHOTO' },
+   { id: 10, label: '10. Tabliczki znamionowe', type: 'PHOTO' },
+   { id: 11, label: '11. Umowa poprzednia inst.', type: 'doc' },
 ];
 
 export const Customers: React.FC<CustomersProps> = ({
@@ -98,17 +97,32 @@ export const Customers: React.FC<CustomersProps> = ({
   
   // Audit UI State
   const [activeAuditStepId, setActiveAuditStepId] = useState<number | null>(1); // Default to first step
+  
+  // --- ADVANCED IMAGE ZOOM STATE ---
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
   const [zoomScale, setZoomScale] = useState(1);
+  const [zoomPosition, setZoomPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
-  // Derived Data
+  // --- PERMISSIONS LOGIC ---
+  const hasFullAccess = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.OFFICE;
+
+  // Derived Data with Security Filter
   const filteredCustomers = useMemo(() => {
-    return customers.filter(c => 
+    // 1. First filter by permission
+    let accessibleCustomers = customers;
+    if (currentUser.role === UserRole.SALES) {
+       accessibleCustomers = customers.filter(c => c.repId === currentUser.id);
+    }
+
+    // 2. Then filter by search term
+    return accessibleCustomers.filter(c => 
       c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
       c.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       c.phone.includes(searchTerm)
     );
-  }, [customers, searchTerm]);
+  }, [customers, searchTerm, currentUser]);
 
   const selectedCustomer = useMemo(() => 
     customers.find(c => c.id === selectedCustomerId), 
@@ -129,6 +143,10 @@ export const Customers: React.FC<CustomersProps> = ({
      // FIX: Check for both HEATING (new) and HEAT_PUMP (legacy)
      if (acceptedOffer.type === 'HEATING' || (acceptedOffer.type as any) === 'HEAT_PUMP') {
         return 'System Grzewczy';
+     }
+     
+     if (acceptedOffer.type === 'ME') {
+        return 'Magazyn Energii';
      }
      
      // PV Check - Only check calculatorState if it's a PV offer or undefined type (legacy)
@@ -453,9 +471,60 @@ export const Customers: React.FC<CustomersProps> = ({
      }
   };
 
-  const handleZoom = (url: string) => {
+  // --- ADVANCED IMAGE ZOOM HANDLERS ---
+  const handleOpenZoom = (url: string) => {
      setZoomedImage(url);
      setZoomScale(1);
+     setZoomPosition({ x: 0, y: 0 });
+  };
+
+  const handleCloseZoom = () => {
+     setZoomedImage(null);
+     setZoomScale(1);
+     setZoomPosition({ x: 0, y: 0 });
+  };
+
+  const handleZoomIn = (e?: React.MouseEvent) => {
+     e?.stopPropagation();
+     setZoomScale(prev => Math.min(prev + 0.5, 5));
+  };
+
+  const handleZoomOut = (e?: React.MouseEvent) => {
+     e?.stopPropagation();
+     setZoomScale(prev => Math.max(prev - 0.5, 1));
+     if (zoomScale <= 1.5) setZoomPosition({ x: 0, y: 0 }); // Reset pos if zooming out fully
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+     if (zoomScale > 1) {
+        setIsDragging(true);
+        setDragStart({ x: e.clientX - zoomPosition.x, y: e.clientY - zoomPosition.y });
+     }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+     if (isDragging && zoomScale > 1) {
+        e.preventDefault();
+        setZoomPosition({
+           x: e.clientX - dragStart.x,
+           y: e.clientY - dragStart.y
+        });
+     }
+  };
+
+  const handleMouseUp = () => {
+     setIsDragging(false);
+  };
+
+  const handleDownloadZoomed = () => {
+     if (zoomedImage) {
+        const link = document.createElement('a');
+        link.href = zoomedImage;
+        link.download = 'zdjecie-audyt.jpg';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+     }
   };
 
   // Helper for installation fields saving feedback
@@ -628,8 +697,8 @@ export const Customers: React.FC<CustomersProps> = ({
                   {/* TAB: DETAILS */}
                   {activeTab === 'details' && (
                      <div className="max-w-4xl space-y-6 animate-fade-in">
-                        {/* Rep & Contract Info */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* ... (Existing details code) ... */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                            <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl flex items-center shadow-sm">
                               <div className="bg-indigo-100 p-3 rounded-full mr-4 text-indigo-600">
                                  <Briefcase className="w-6 h-6" />
@@ -653,6 +722,18 @@ export const Customers: React.FC<CustomersProps> = ({
                                        Zaakceptowano: {new Date(acceptedOffer.dateCreated).toLocaleDateString()}
                                     </div>
                                  )}
+                              </div>
+                           </div>
+
+                           <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl flex items-center shadow-sm">
+                              <div className="bg-amber-100 p-3 rounded-full mr-4 text-amber-600">
+                                 <Wrench className="w-6 h-6" />
+                              </div>
+                              <div>
+                                 <p className="text-xs font-bold text-amber-500 uppercase tracking-wider">Etap Realizacji</p>
+                                 <p className="text-lg font-bold text-amber-900">
+                                    {customerInstallation ? customerInstallation.status : 'Brak'}
+                                 </p>
                               </div>
                            </div>
                         </div>
@@ -699,11 +780,15 @@ export const Customers: React.FC<CustomersProps> = ({
                                  />
                               </div>
                               <div className="md:col-span-2">
-                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Opiekun Handlowy (Zmiana)</label>
+                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex items-center">
+                                    Opiekun Handlowy (Zmiana)
+                                    {!hasFullAccess && <Lock className="w-3 h-3 ml-1 text-slate-400" />}
+                                 </label>
                                  <select 
                                    value={editForm.repId || ''} 
                                    onChange={e => setEditForm({...editForm, repId: e.target.value})}
-                                   className="w-full p-3 border border-slate-200 rounded-xl bg-white"
+                                   disabled={!hasFullAccess}
+                                   className="w-full p-3 border border-slate-200 rounded-xl bg-white disabled:opacity-50 disabled:cursor-not-allowed"
                                  >
                                     <option value="">-- Wybierz opiekuna --</option>
                                     {users.filter(u => u.role === UserRole.SALES || u.role === UserRole.SALES_MANAGER || u.role === UserRole.ADMIN).map(u => (
@@ -768,6 +853,7 @@ export const Customers: React.FC<CustomersProps> = ({
                   {/* ... INSTALLATIONS TAB ... */}
                   {activeTab === 'installations' && (
                      <div className="max-w-4xl space-y-6 animate-fade-in">
+                        {/* ... (Existing installation code) ... */}
                         {customerInstallation ? (
                            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
                               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-slate-100">
@@ -775,17 +861,6 @@ export const Customers: React.FC<CustomersProps> = ({
                                     <h3 className="text-xl font-bold text-slate-800 flex items-center">
                                        <Wrench className="w-5 h-5 mr-2 text-amber-500" /> Instalacja #{customerInstallation.id.slice(0,6)}
                                     </h3>
-                                    <div className="mt-2 flex items-center gap-2">
-                                       <select 
-                                          value={customerInstallation.status}
-                                          onChange={(e) => onUpdateInstallation({ ...customerInstallation, status: e.target.value as InstallationStatus })}
-                                          className="text-sm font-bold bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1.5 rounded-lg outline-none cursor-pointer hover:bg-blue-100"
-                                       >
-                                          {Object.values(InstallationStatus).map(s => (
-                                             <option key={s} value={s}>{s}</option>
-                                          ))}
-                                       </select>
-                                    </div>
                                  </div>
                                  <div className="text-right">
                                     <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold border border-slate-200 uppercase tracking-wide">
@@ -807,6 +882,13 @@ export const Customers: React.FC<CustomersProps> = ({
                                           <div className="bg-white p-3 rounded-lg border border-slate-200 mb-3">
                                              <div className="flex justify-between border-b border-slate-100 pb-2 mb-2"><span className="text-slate-500">Moc Instalacji PV:</span> <span className="font-bold text-amber-600">{customerInstallation.systemSizeKw} kWp</span></div>
                                              
+                                             {acceptedOffer && acceptedOffer.calculatorState && 'connectionPower' in acceptedOffer.calculatorState && (
+                                                <div className="flex justify-between border-b border-slate-100 pb-2 mb-2">
+                                                   <span className="text-slate-500">Moc Przyłączeniowa:</span>
+                                                   <span className="font-bold text-slate-800">{(acceptedOffer.calculatorState as CalculatorState).connectionPower} kW</span>
+                                                </div>
+                                             )}
+
                                              {/* Panels + Count */}
                                              <div className="flex justify-between border-b border-slate-100 pb-2 mb-2">
                                                 <span className="text-slate-500">Panele:</span> 
@@ -868,6 +950,51 @@ export const Customers: React.FC<CustomersProps> = ({
                                              </div>
                                           )}
                                        </div>
+                                    ) : contractType.includes('Magazyn') || (acceptedOffer?.type === 'ME') ? (
+                                       <div className="space-y-3 text-sm">
+                                          <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                                             <div className="flex justify-between border-b border-green-200 pb-2 mb-2">
+                                                <span className="text-slate-500 font-medium">Magazyn Energii:</span>
+                                                <span className="font-bold text-green-800">{customerInstallation.storageModel}</span>
+                                             </div>
+                                             <div className="flex justify-between border-b border-green-200 pb-2 mb-2">
+                                                <span className="text-slate-500 font-medium">Pojemność:</span>
+                                                <span className="font-bold text-green-800">{customerInstallation.storageSizeKw} kWh</span>
+                                             </div>
+                                             {acceptedOffer && acceptedOffer.calculatorState && (
+                                                <div className="flex justify-between">
+                                                   <span className="text-slate-500 font-medium">Liczba modułów:</span>
+                                                   <span className="font-bold text-green-800">{(acceptedOffer.calculatorState as StorageCalculatorState).storageCount} szt.</span>
+                                                </div>
+                                             )}
+                                          </div>
+
+                                          <div className="bg-white p-3 rounded-lg border border-slate-200">
+                                             {acceptedOffer && acceptedOffer.calculatorState && (
+                                                <div className="flex justify-between border-b border-slate-100 pb-2 mb-2">
+                                                   <span className="text-slate-500">Istniejąca Moc PV:</span>
+                                                   <span className="font-bold text-slate-800">{(acceptedOffer.calculatorState as StorageCalculatorState).existingPvPower} kWp</span>
+                                                </div>
+                                             )}
+                                             <div className="flex justify-between border-b border-slate-100 pb-2 mb-2">
+                                                <span className="text-slate-500">Falownik (Retrofit):</span>
+                                                <span className="font-medium text-slate-800">
+                                                   {customerInstallation.inverterModel || (() => {
+                                                      const s = acceptedOffer?.calculatorState as StorageCalculatorState;
+                                                      if (s?.additionalInverterId) {
+                                                          const inv = inventory.find(x => x.id === s.additionalInverterId);
+                                                          return inv ? inv.name : 'Wybrano (ID nieznane)';
+                                                      }
+                                                      return 'Brak (Tylko magazyn)';
+                                                   })()}
+                                                </span>
+                                             </div>
+                                             <div className="flex justify-between">
+                                                <span className="text-slate-500">Długość Przekopu:</span>
+                                                <span className="font-bold text-slate-800">{customerInstallation.trenchLength || (acceptedOffer?.calculatorState as any)?.trenchLength || 0} mb</span>
+                                             </div>
+                                          </div>
+                                       </div>
                                     ) : (
                                        // Heat Pump Layout
                                        <div className="space-y-3 text-sm">
@@ -910,12 +1037,16 @@ export const Customers: React.FC<CustomersProps> = ({
                                        </h4>
                                        <div className="space-y-4">
                                           <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 relative">
-                                             <label className="block text-xs font-bold text-blue-700 mb-1 uppercase">Planowana Data</label>
+                                             <label className="block text-xs font-bold text-blue-700 mb-1 uppercase flex items-center">
+                                                Planowana Data
+                                                {!hasFullAccess && <Lock className="w-3 h-3 ml-1 text-blue-400" />}
+                                             </label>
                                              <input 
                                                 type="date"
                                                 value={customerInstallation.dateScheduled || ''}
                                                 onChange={(e) => handleUpdateInstallationField(customerInstallation, 'dateScheduled', e.target.value, 'date')}
-                                                className="w-full p-2 border border-blue-200 rounded-lg text-sm bg-white font-bold text-slate-800 focus:ring-2 focus:ring-blue-400 outline-none"
+                                                disabled={!hasFullAccess}
+                                                className={`w-full p-2 border border-blue-200 rounded-lg text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-400 outline-none ${!hasFullAccess ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white'}`}
                                              />
                                              {saveSuccessField === 'date' && (
                                                 <span className="absolute top-2 right-2 text-green-600 text-xs font-bold animate-fade-in flex items-center">
@@ -924,16 +1055,20 @@ export const Customers: React.FC<CustomersProps> = ({
                                              )}
                                           </div>
                                           <div className="relative">
-                                             <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">Przypisana Ekipa</label>
+                                             <label className="block text-xs font-bold text-slate-500 mb-1 uppercase flex items-center">
+                                                Przypisana Ekipa
+                                                {!hasFullAccess && <Lock className="w-3 h-3 ml-1 text-slate-400" />}
+                                             </label>
                                              <div className="relative">
                                                 <Wrench className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                                                 <select 
                                                    value={customerInstallation.assignedTeam || ''}
                                                    onChange={(e) => handleUpdateInstallationField(customerInstallation, 'assignedTeam', e.target.value, 'team')}
-                                                   className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-xl text-sm bg-white font-medium focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
+                                                   disabled={!hasFullAccess}
+                                                   className={`w-full pl-10 pr-4 py-3 border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none appearance-none ${!hasFullAccess ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white'}`}
                                                 >
                                                    <option value="">-- Wybierz ekipę --</option>
-                                                   {installers.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                                                   {users.filter(u => u.role === UserRole.INSTALLER).map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
                                                 </select>
                                                 {saveSuccessField === 'team' && (
                                                    <span className="absolute top-1/2 -translate-y-1/2 right-8 text-green-600 text-xs font-bold animate-fade-in flex items-center bg-white px-1">
@@ -960,6 +1095,7 @@ export const Customers: React.FC<CustomersProps> = ({
                   {/* TAB: FINANCES */}
                   {activeTab === 'finances' && (
                      <div className="max-w-4xl space-y-6 animate-fade-in">
+                        {/* ... (Existing finances code) ... */}
                         {customerInstallation ? (
                            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                               <div className="flex justify-between items-center mb-6">
@@ -989,12 +1125,16 @@ export const Customers: React.FC<CustomersProps> = ({
                                  <div className="animate-fade-in">
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                                        <div className="p-4 rounded-xl border bg-slate-50 border-slate-200">
-                                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Wartość Umowy</label>
+                                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex items-center">
+                                             Wartość Umowy
+                                             {!hasFullAccess && <Lock className="w-3 h-3 ml-1 text-slate-400" />}
+                                          </label>
                                           <input 
                                              type="number" 
                                              value={customerInstallation.price || ''}
                                              onChange={(e) => onUpdateInstallation({ ...customerInstallation, price: parseFloat(e.target.value) })}
-                                             className="w-full bg-transparent font-bold text-2xl text-slate-800 outline-none"
+                                             disabled={!hasFullAccess}
+                                             className="w-full bg-transparent font-bold text-2xl text-slate-800 outline-none disabled:cursor-not-allowed"
                                              placeholder="0"
                                           />
                                           <span className="text-xs text-slate-400">PLN Brutto</span>
@@ -1023,48 +1163,55 @@ export const Customers: React.FC<CustomersProps> = ({
                                        })()}
                                     </div>
 
-                                    <div className="bg-slate-50 rounded-xl p-5 border border-slate-200 mb-6">
-                                       <h4 className="font-bold text-slate-700 mb-4 text-sm uppercase">Dodaj Wpłatę Klienta</h4>
-                                       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-                                          <div className="md:col-span-3">
-                                             <label className="block text-xs font-bold text-slate-500 mb-1">Kwota (PLN)</label>
-                                             <input type="number" value={newPaymentAmount} onChange={(e) => setNewPaymentAmount(e.target.value)} className="w-full p-3 border rounded-lg" placeholder="0.00" />
-                                          </div>
-                                          <div className="md:col-span-3">
-                                             <label className="block text-xs font-bold text-slate-500 mb-1">Data</label>
-                                             <input type="date" value={newPaymentDate} onChange={(e) => setNewPaymentDate(e.target.value)} className="w-full p-3 border rounded-lg" />
-                                          </div>
-                                          <div className="md:col-span-4">
-                                             <label className="block text-xs font-bold text-slate-500 mb-1">Opis / Tytuł</label>
-                                             <input type="text" value={newPaymentDesc} onChange={(e) => setNewPaymentDesc(e.target.value)} className="w-full p-3 border rounded-lg" placeholder="np. Zaliczka, Faktura 1/2023" />
-                                          </div>
-                                          <div className="md:col-span-2 flex gap-2">
-                                             <button 
-                                                onClick={() => paymentFileInputRef.current?.click()}
-                                                className={`p-3 rounded-lg border flex items-center justify-center transition-colors ${paymentAttachment ? 'bg-green-100 border-green-300 text-green-700' : 'bg-white border-slate-300 text-slate-500 hover:bg-slate-50'}`}
-                                                title="Dodaj załącznik (Faktura/Potwierdzenie)"
-                                             >
-                                                <Paperclip className="w-5 h-5" />
-                                                <input type="file" ref={paymentFileInputRef} className="hidden" accept="image/*,.pdf" onChange={handlePaymentAttachmentUpload} />
-                                             </button>
-                                             <button onClick={handleAddPaymentSubmit} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold p-3 rounded-lg flex items-center justify-center">
-                                                <Plus className="w-5 h-5" />
-                                             </button>
+                                    {/* Add Payment Form - Only for Admin/Office */}
+                                    {hasFullAccess && (
+                                       <div className="bg-slate-50 rounded-xl p-5 border border-slate-200 mb-6">
+                                          <h4 className="font-bold text-slate-700 mb-4 text-sm uppercase">Dodaj Wpłatę Klienta</h4>
+                                          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                                             <div className="md:col-span-3">
+                                                <label className="block text-xs font-bold text-slate-500 mb-1">Kwota (PLN)</label>
+                                                <input type="number" value={newPaymentAmount} onChange={(e) => setNewPaymentAmount(e.target.value)} className="w-full p-3 border rounded-lg" placeholder="0.00" />
+                                             </div>
+                                             <div className="md:col-span-3">
+                                                <label className="block text-xs font-bold text-slate-500 mb-1">Data</label>
+                                                <input type="date" value={newPaymentDate} onChange={(e) => setNewPaymentDate(e.target.value)} className="w-full p-3 border rounded-lg" />
+                                             </div>
+                                             <div className="md:col-span-4">
+                                                <label className="block text-xs font-bold text-slate-500 mb-1">Opis / Tytuł</label>
+                                                <input type="text" value={newPaymentDesc} onChange={(e) => setNewPaymentDesc(e.target.value)} className="w-full p-3 border rounded-lg" placeholder="np. Zaliczka, Faktura 1/2023" />
+                                             </div>
+                                             <div className="md:col-span-2 flex gap-2">
+                                                <button 
+                                                   onClick={() => paymentFileInputRef.current?.click()}
+                                                   className={`p-3 rounded-lg border flex items-center justify-center transition-colors ${paymentAttachment ? 'bg-green-100 border-green-300 text-green-700' : 'bg-white border-slate-300 text-slate-500 hover:bg-slate-50'}`}
+                                                   title="Dodaj załącznik (Faktura/Potwierdzenie)"
+                                                >
+                                                   <Paperclip className="w-5 h-5" />
+                                                   <input type="file" ref={paymentFileInputRef} className="hidden" accept="image/*,.pdf" onChange={handlePaymentAttachmentUpload} />
+                                                </button>
+                                                <button onClick={handleAddPaymentSubmit} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold p-3 rounded-lg flex items-center justify-center">
+                                                   <Plus className="w-5 h-5" />
+                                                </button>
+                                             </div>
                                           </div>
                                        </div>
-                                    </div>
+                                    )}
                                  </div>
                               ) : (
                                  // COMMISSION VIEW
                                  <div className="animate-fade-in">
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                                        <div className="p-4 rounded-xl border bg-purple-50 border-purple-200">
-                                          <label className="block text-xs font-bold text-purple-600 uppercase mb-1">Naliczona Marża (Całość)</label>
+                                          <label className="block text-xs font-bold text-purple-600 uppercase mb-1 flex items-center">
+                                             Naliczona Marża (Całość)
+                                             {!hasFullAccess && <Lock className="w-3 h-3 ml-1 text-purple-400" />}
+                                          </label>
                                           <input 
                                              type="number" 
                                              value={customerInstallation.commissionValue || 0}
                                              onChange={(e) => onUpdateInstallation({ ...customerInstallation, commissionValue: parseFloat(e.target.value) })}
-                                             className="w-full bg-transparent font-bold text-2xl text-purple-800 outline-none"
+                                             disabled={!hasFullAccess}
+                                             className="w-full bg-transparent font-bold text-2xl text-purple-800 outline-none disabled:cursor-not-allowed"
                                           />
                                           <span className="text-xs text-purple-400">PLN (Do podziału)</span>
                                        </div>
@@ -1094,36 +1241,39 @@ export const Customers: React.FC<CustomersProps> = ({
                                        })()}
                                     </div>
 
-                                    <div className="bg-purple-50 rounded-xl p-5 border border-purple-100 mb-6">
-                                       <h4 className="font-bold text-purple-800 mb-4 text-sm uppercase">Zaksięguj Wypłatę Prowizji</h4>
-                                       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-                                          <div className="md:col-span-3">
-                                             <label className="block text-xs font-bold text-purple-700 mb-1">Kwota (PLN)</label>
-                                             <input type="number" value={newPaymentAmount} onChange={(e) => setNewPaymentAmount(e.target.value)} className="w-full p-3 border border-purple-200 rounded-lg focus:ring-purple-500" placeholder="0.00" />
-                                          </div>
-                                          <div className="md:col-span-3">
-                                             <label className="block text-xs font-bold text-purple-700 mb-1">Data</label>
-                                             <input type="date" value={newPaymentDate} onChange={(e) => setNewPaymentDate(e.target.value)} className="w-full p-3 border border-purple-200 rounded-lg focus:ring-purple-500" />
-                                          </div>
-                                          <div className="md:col-span-4">
-                                             <label className="block text-xs font-bold text-purple-700 mb-1">Opis</label>
-                                             <input type="text" value={newPaymentDesc} onChange={(e) => setNewPaymentDesc(e.target.value)} className="w-full p-3 border border-purple-200 rounded-lg focus:ring-purple-500" placeholder="np. Transza 1" />
-                                          </div>
-                                          <div className="md:col-span-2 flex gap-2">
-                                             <button 
-                                                onClick={() => commissionFileInputRef.current?.click()}
-                                                className={`p-3 rounded-lg border border-purple-300 flex items-center justify-center transition-colors ${commissionAttachment ? 'bg-green-100 text-green-700' : 'bg-white text-purple-500 hover:bg-purple-50'}`}
-                                                title="Dodaj potwierdzenie przelewu"
-                                             >
-                                                <Paperclip className="w-5 h-5" />
-                                                <input type="file" ref={commissionFileInputRef} className="hidden" accept="image/*,.pdf" onChange={handlePaymentAttachmentUpload} />
-                                             </button>
-                                             <button onClick={handleAddPaymentSubmit} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold p-3 rounded-lg flex items-center justify-center">
-                                                <Plus className="w-5 h-5" />
-                                             </button>
+                                    {/* Add Commission Form - Only for Admin/Office */}
+                                    {hasFullAccess && (
+                                       <div className="bg-purple-50 rounded-xl p-5 border border-purple-100 mb-6">
+                                          <h4 className="font-bold text-purple-800 mb-4 text-sm uppercase">Zaksięguj Wypłatę Prowizji</h4>
+                                          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                                             <div className="md:col-span-3">
+                                                <label className="block text-xs font-bold text-purple-700 mb-1">Kwota (PLN)</label>
+                                                <input type="number" value={newPaymentAmount} onChange={(e) => setNewPaymentAmount(e.target.value)} className="w-full p-3 border border-purple-200 rounded-lg focus:ring-purple-500" placeholder="0.00" />
+                                             </div>
+                                             <div className="md:col-span-3">
+                                                <label className="block text-xs font-bold text-purple-700 mb-1">Data</label>
+                                                <input type="date" value={newPaymentDate} onChange={(e) => setNewPaymentDate(e.target.value)} className="w-full p-3 border border-purple-200 rounded-lg focus:ring-purple-500" />
+                                             </div>
+                                             <div className="md:col-span-4">
+                                                <label className="block text-xs font-bold text-purple-700 mb-1">Opis</label>
+                                                <input type="text" value={newPaymentDesc} onChange={(e) => setNewPaymentDesc(e.target.value)} className="w-full p-3 border border-purple-200 rounded-lg focus:ring-purple-500" placeholder="np. Transza 1" />
+                                             </div>
+                                             <div className="md:col-span-2 flex gap-2">
+                                                <button 
+                                                   onClick={() => commissionFileInputRef.current?.click()}
+                                                   className={`p-3 rounded-lg border border-purple-300 flex items-center justify-center transition-colors ${commissionAttachment ? 'bg-green-100 text-green-700' : 'bg-white text-purple-500 hover:bg-purple-50'}`}
+                                                   title="Dodaj potwierdzenie przelewu"
+                                                >
+                                                   <Paperclip className="w-5 h-5" />
+                                                   <input type="file" ref={commissionFileInputRef} className="hidden" accept="image/*,.pdf" onChange={handlePaymentAttachmentUpload} />
+                                                </button>
+                                                <button onClick={handleAddPaymentSubmit} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold p-3 rounded-lg flex items-center justify-center">
+                                                   <Plus className="w-5 h-5" />
+                                                </button>
+                                             </div>
                                           </div>
                                        </div>
-                                    </div>
+                                    )}
                                  </div>
                               )}
 
@@ -1162,12 +1312,14 @@ export const Customers: React.FC<CustomersProps> = ({
                                                       <Download className="w-4 h-4" />
                                                    </button>
                                                 )}
-                                                <button 
-                                                   onClick={() => financeMode === 'CLIENT' ? onRemovePayment(customerInstallation.id, p.id) : onRemoveCommissionPayout(customerInstallation.id, p.id)}
-                                                   className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg transition-colors"
-                                                >
-                                                   <Trash2 className="w-4 h-4" />
-                                                </button>
+                                                {hasFullAccess && (
+                                                   <button 
+                                                      onClick={() => financeMode === 'CLIENT' ? onRemovePayment(customerInstallation.id, p.id) : onRemoveCommissionPayout(customerInstallation.id, p.id)}
+                                                      className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg transition-colors"
+                                                   >
+                                                      <Trash2 className="w-4 h-4" />
+                                                   </button>
+                                                )}
                                              </div>
                                           </div>
                                           );
@@ -1185,87 +1337,106 @@ export const Customers: React.FC<CustomersProps> = ({
                      </div>
                   )}
 
-                  {/* TAB: AUDIT */}
+                  {/* TAB: AUDIT - REDESIGNED */}
                   {activeTab === 'audit' && (
-                     <div className="max-w-6xl space-y-6 animate-fade-in h-full flex flex-col md:flex-row gap-6">
-                        {/* Steps Sidebar */}
-                        <div className="md:w-1/3 bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col shadow-sm">
-                           <div className="p-4 bg-slate-50 border-b border-slate-100 font-bold text-slate-700">
-                              Etapy Audytu
-                           </div>
-                           <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                     <div className="max-w-6xl space-y-4 animate-fade-in h-full flex flex-col">
+                        
+                        {/* Steps Topbar (Horizontal Pills) */}
+                        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shrink-0 shadow-sm">
+                           <div className="flex overflow-x-auto p-3 gap-2 hide-scrollbar">
                               {AUDIT_STEPS.map(step => {
                                  const count = editForm.auditPhotos?.filter(p => p.category === step.id.toString()).length || 0;
                                  const isComplete = count > 0;
+                                 const isActive = activeAuditStepId === step.id;
+                                 
                                  return (
-                                    <div 
+                                    <button 
                                        key={step.id}
                                        onClick={() => setActiveAuditStepId(step.id)}
-                                       className={`p-3 rounded-xl cursor-pointer text-sm font-medium transition-all flex justify-between items-center ${activeAuditStepId === step.id ? 'bg-blue-50 text-blue-700 border border-blue-100' : 'text-slate-600 hover:bg-slate-50 border border-transparent'}`}
+                                       className={`px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap flex items-center border ${
+                                          isActive 
+                                            ? 'bg-blue-600 text-white border-blue-600 shadow-md' 
+                                            : isComplete 
+                                              ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                                              : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                                       }`}
                                     >
-                                       <span className="truncate mr-2">{step.label}</span>
-                                       {isComplete && <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />}
-                                    </div>
+                                       {step.label}
+                                       {isComplete && <CheckCircle className={`w-3 h-3 ml-2 ${isActive ? 'text-white' : 'text-green-500'}`} />}
+                                    </button>
                                  )
                               })}
                            </div>
                         </div>
 
                         {/* Photos Area */}
-                        <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+                        <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden min-h-0">
                            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                              <h4 className="font-bold text-slate-700">
+                              <h4 className="font-bold text-slate-800 text-lg">
                                  {AUDIT_STEPS.find(s => s.id === activeAuditStepId)?.label}
                               </h4>
                               <button 
                                  onClick={() => auditFileInputRef.current?.click()}
-                                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center transition-colors"
+                                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center transition-colors shadow-sm"
                               >
                                  <Camera className="w-4 h-4 mr-2" /> Dodaj Zdjęcie
                                  <input type="file" ref={auditFileInputRef} className="hidden" accept="image/*,application/pdf" onChange={handleAuditPhotoUpload} />
                               </button>
                            </div>
                            
-                           <div className="p-4 flex-1 overflow-y-auto bg-slate-100/50">
-                              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                           <div className="p-6 flex-1 overflow-y-auto bg-slate-100/50">
+                              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                                  {editForm.auditPhotos?.filter(p => p.category === activeAuditStepId?.toString()).map(photo => (
-                                    <div key={photo.id} className="bg-white p-2 rounded-xl border border-slate-200 shadow-sm group relative">
-                                       <div className="aspect-square bg-slate-100 rounded-lg overflow-hidden mb-2 relative cursor-pointer" onClick={() => handleZoom(photo.url || '')}>
+                                    <div key={photo.id} className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm group relative flex flex-col transition-transform hover:scale-[1.01]">
+                                       <div 
+                                          className="aspect-square bg-slate-100 rounded-lg overflow-hidden mb-3 relative cursor-pointer border border-slate-100" 
+                                          onClick={() => handleOpenZoom(photo.url || '')}
+                                       >
                                           {photo.type === 'application/pdf' ? (
-                                             <div className="w-full h-full flex items-center justify-center text-slate-400">PDF</div>
+                                             <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 gap-2">
+                                                <FileText className="w-12 h-12" />
+                                                <span className="text-xs font-bold uppercase">Dokument PDF</span>
+                                             </div>
                                           ) : (
                                              <img src={photo.url} alt="audit" className="w-full h-full object-cover" />
                                           )}
                                           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                             <ZoomIn className="w-8 h-8 text-white drop-shadow-md" />
+                                             <ZoomIn className="w-10 h-10 text-white drop-shadow-md" />
                                           </div>
                                        </div>
+                                       
                                        <input 
                                           type="text" 
-                                          placeholder="Opis..."
+                                          placeholder="Dodaj opis..."
                                           defaultValue={photo.description || ''}
                                           onBlur={(e) => handleUpdateAuditFileNote(photo.id, e.target.value)}
-                                          className="w-full text-xs p-1 border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none bg-transparent"
+                                          className="w-full text-xs font-medium p-2 rounded border border-transparent hover:border-slate-300 focus:border-blue-500 focus:bg-slate-50 outline-none transition-all text-slate-600"
                                        />
+                                       
                                        <button 
                                           onClick={(e) => handleInitiateDelete(e, photo)}
-                                          className="absolute top-3 right-3 bg-red-500 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-red-600"
+                                          className="absolute top-4 right-4 bg-white/90 text-red-500 p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-all shadow-sm hover:bg-red-50 hover:text-red-600"
+                                          title="Usuń zdjęcie"
                                        >
-                                          <Trash2 className="w-3 h-3" />
+                                          <Trash2 className="w-4 h-4" />
                                        </button>
                                     </div>
                                  ))}
+                                 
                                  {(!editForm.auditPhotos?.filter(p => p.category === activeAuditStepId?.toString()).length) && (
-                                    <div className="col-span-full flex flex-col items-center justify-center py-10 text-slate-400">
-                                       <ImageIcon className="w-12 h-12 mb-2 opacity-20" />
-                                       <p className="text-sm">Brak zdjęć w tym kroku</p>
+                                    <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-400">
+                                       <div className="bg-slate-100 p-6 rounded-full mb-4">
+                                          <ImageIcon className="w-12 h-12 opacity-30" />
+                                       </div>
+                                       <p className="font-bold text-slate-500">Brak materiałów w tym kroku</p>
+                                       <p className="text-sm mt-1">Kliknij "Dodaj Zdjęcie" aby uzupełnić dokumentację.</p>
                                     </div>
                                  )}
                               </div>
                            </div>
-                           <div className="p-3 border-t border-slate-100 bg-slate-50 flex justify-end">
-                              <button onClick={saveAuditChanges} className="text-blue-600 font-bold text-sm hover:bg-blue-100 px-4 py-2 rounded-lg transition-colors">
-                                 Zapisz zmiany w opisach
+                           <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+                              <button onClick={saveAuditChanges} className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm px-6 py-2.5 rounded-xl transition-colors shadow-sm flex items-center">
+                                 <Save className="w-4 h-4 mr-2" /> Zapisz zmiany w opisach
                               </button>
                            </div>
                         </div>
@@ -1343,7 +1514,7 @@ export const Customers: React.FC<CustomersProps> = ({
                               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
                                  {editForm.files.map(file => (
                                     <div key={file.id} className="group relative bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col hover:shadow-md transition-all">
-                                       <div className="aspect-[4/3] bg-white rounded-lg mb-2 overflow-hidden flex items-center justify-center border border-slate-100 cursor-pointer" onClick={() => file.type.startsWith('image') ? handleZoom(file.url || '') : handleDownloadFile(file)}>
+                                       <div className="aspect-[4/3] bg-white rounded-lg mb-2 overflow-hidden flex items-center justify-center border border-slate-100 cursor-pointer" onClick={() => file.type.startsWith('image') ? handleOpenZoom(file.url || '') : handleDownloadFile(file)}>
                                           {file.type.startsWith('image') ? (
                                              <img src={file.url} alt={file.name} className="w-full h-full object-cover" />
                                           ) : (
@@ -1374,8 +1545,8 @@ export const Customers: React.FC<CustomersProps> = ({
                            
                            {editForm.files && editForm.files.length > 0 && (
                               <div className="mt-6 flex justify-end">
-                                 <button onClick={saveGenericFileChanges} className="text-indigo-600 font-bold text-sm hover:bg-indigo-50 px-4 py-2 rounded-lg transition-colors">
-                                    Zapisz opisy plików
+                                 <button onClick={saveGenericFileChanges} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm px-6 py-2.5 rounded-xl transition-colors shadow-sm flex items-center">
+                                    <Save className="w-4 h-4 mr-2" /> Zapisz opisy plików
                                  </button>
                               </div>
                            )}
@@ -1433,20 +1604,73 @@ export const Customers: React.FC<CustomersProps> = ({
          </div>
       )}
 
-      {/* Image Zoom Modal */}
+      {/* ADVANCED IMAGE VIEWER MODAL */}
       {zoomedImage && (
-         <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4" onClick={() => setZoomedImage(null)}>
-            <div className="relative w-full h-full max-w-5xl max-h-[90vh] flex items-center justify-center">
+         <div 
+            className="fixed inset-0 z-[100] bg-black/95 flex flex-col overflow-hidden"
+            onMouseUp={handleMouseUp}
+            onMouseMove={handleMouseMove}
+         >
+            {/* Header */}
+            <div className="absolute top-0 left-0 w-full p-4 flex justify-between items-center z-20 bg-gradient-to-b from-black/60 to-transparent">
+               <span className="text-white/80 font-mono text-xs">Użyj myszki do przesuwania</span>
+               <button 
+                  onClick={handleCloseZoom} 
+                  className="bg-white/10 hover:bg-white/20 text-white p-2 rounded-full transition-colors backdrop-blur-md"
+               >
+                  <X className="w-6 h-6" />
+               </button>
+            </div>
+
+            {/* Canvas Area */}
+            <div 
+               className={`flex-1 relative flex items-center justify-center overflow-hidden cursor-${isDragging ? 'grabbing' : zoomScale > 1 ? 'grab' : 'default'}`}
+               onMouseDown={handleMouseDown}
+               onWheel={(e) => {
+                  if (e.deltaY < 0) handleZoomIn();
+                  else handleZoomOut();
+               }}
+            >
                <img 
                   src={zoomedImage} 
-                  className="max-w-full max-h-full object-contain rounded-lg shadow-2xl transition-transform duration-200" 
-                  style={{ transform: `scale(${zoomScale})` }}
-                  onClick={(e) => { e.stopPropagation(); setZoomScale(zoomScale === 1 ? 2 : 1); }}
+                  className="max-w-full max-h-full object-contain transition-transform duration-100 ease-linear select-none" 
+                  style={{ 
+                     transform: `translate(${zoomPosition.x}px, ${zoomPosition.y}px) scale(${zoomScale})`,
+                     cursor: isDragging ? 'grabbing' : zoomScale > 1 ? 'grab' : 'default'
+                  }}
+                  draggable={false}
                />
-               <button onClick={() => setZoomedImage(null)} className="absolute top-4 right-4 text-white/70 hover:text-white bg-black/50 rounded-full p-2"><X className="w-8 h-8"/></button>
-               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 text-white px-4 py-2 rounded-full text-sm backdrop-blur-md">
-                  Kliknij aby przybliżyć / oddalić
-               </div>
+            </div>
+
+            {/* Bottom Toolbar */}
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-slate-900/80 backdrop-blur-xl border border-white/10 p-2 rounded-2xl flex items-center space-x-2 z-20 shadow-2xl">
+               <button onClick={handleZoomOut} className="p-3 hover:bg-white/10 rounded-xl text-white transition-colors">
+                  <Minus className="w-5 h-5" />
+               </button>
+               
+               <span className="text-white font-mono font-bold w-12 text-center text-sm">{Math.round(zoomScale * 100)}%</span>
+               
+               <button onClick={handleZoomIn} className="p-3 hover:bg-white/10 rounded-xl text-white transition-colors">
+                  <Plus className="w-5 h-5" />
+               </button>
+
+               <div className="w-px h-6 bg-white/20 mx-2"></div>
+
+               <button 
+                  onClick={handleCloseZoom} 
+                  className="p-3 hover:bg-white/10 rounded-xl text-white transition-colors"
+                  title="Resetuj widok"
+               >
+                  <Maximize className="w-5 h-5" />
+               </button>
+
+               <button 
+                  onClick={handleDownloadZoomed} 
+                  className="p-3 bg-blue-600 hover:bg-blue-700 rounded-xl text-white transition-colors shadow-lg ml-2"
+                  title="Pobierz"
+               >
+                  <Download className="w-5 h-5" />
+               </button>
             </div>
          </div>
       )}

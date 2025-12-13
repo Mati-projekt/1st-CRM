@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useMemo } from 'react';
 import { Installation, InstallationStatus, Customer, UserRole, User } from '../types';
 import { Calendar, MapPin, ChevronRight, Banknote, Briefcase, Lock, Users, Clock, Hammer, Phone, Navigation, Box, Zap, CheckCircle, ArrowRight, Home, Shovel, CheckSquare, Square, List, CalendarDays, ChevronLeft, Map, ZoomIn, ZoomOut, AlertCircle, Battery, RotateCcw, Flame } from 'lucide-react';
 
@@ -8,7 +9,7 @@ interface InstallationsProps {
   users: User[];
   onNavigateToCustomer: (customerId: string) => void;
   onUpdateInstallation: (installation: Installation) => void;
-  currentUserRole: UserRole;
+  currentUser: User; // Changed from currentUserRole to full User object
 }
 
 // Reuse the helper logic from Dashboard but duplicated for independence in this context (or could be shared util)
@@ -37,8 +38,9 @@ export const Installations: React.FC<InstallationsProps> = ({
   users,
   onNavigateToCustomer,
   onUpdateInstallation,
-  currentUserRole
+  currentUser
 }) => {
+  const currentUserRole = currentUser.role;
   const isInstaller = currentUserRole === UserRole.INSTALLER;
 
   // Zoom state for Kanban view with localStorage persistence
@@ -114,19 +116,28 @@ export const Installations: React.FC<InstallationsProps> = ({
      window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank');
   };
 
+  // --- FILTERED INSTALLATIONS LIST ---
+  const visibleInstallations = useMemo(() => {
+     if (currentUserRole === UserRole.SALES) {
+        const myCustomerIds = customers.filter(c => c.repId === currentUser.id).map(c => c.id);
+        return installations.filter(i => myCustomerIds.includes(i.customerId));
+     }
+     return installations;
+  }, [installations, customers, currentUser, currentUserRole]);
+
   // --- INSTALLER VIEW ---
   if (isInstaller) {
     const [viewMode, setViewMode] = useState<'LIST' | 'CALENDAR'>('LIST');
     const [currentMonth, setCurrentMonth] = useState(new Date());
 
     // Filter out irrelevant statuses for installers
-    const activeJobs = installations.filter(i => 
+    const activeJobs = visibleInstallations.filter(i => 
        i.status === InstallationStatus.PROJECT || 
        i.status === InstallationStatus.INSTALLATION ||
        i.status === InstallationStatus.GRID_CONNECTION
     ).sort((a, b) => new Date(a.dateScheduled || '2100-01-01').getTime() - new Date(b.dateScheduled || '2100-01-01').getTime());
 
-    const completedJobs = installations.filter(i => i.status === InstallationStatus.COMPLETED);
+    const completedJobs = visibleInstallations.filter(i => i.status === InstallationStatus.COMPLETED);
     const [showHistory, setShowHistory] = useState(false);
 
     const toggleEquipment = (inst: Installation, field: 'panelsPicked' | 'inverterPicked' | 'storagePicked' | 'mountingPicked') => {
@@ -349,7 +360,7 @@ export const Installations: React.FC<InstallationsProps> = ({
       for (let d = 1; d <= daysInMonth; d++) {
          const dateObj = new Date(year, month, d);
          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-         const dayJobs = installations.filter(i => i.dateScheduled === dateStr && i.assignedTeam === users.find(u => u.role === UserRole.INSTALLER && u.id === i.assignedTeam)?.id);
+         const dayJobs = visibleInstallations.filter(i => i.dateScheduled === dateStr && i.assignedTeam === users.find(u => u.role === UserRole.INSTALLER && u.id === i.assignedTeam)?.id);
          const isToday = new Date().toDateString() === dateObj.toDateString();
          
          const dayOfWeek = dateObj.getDay();
@@ -559,7 +570,8 @@ export const Installations: React.FC<InstallationsProps> = ({
          >
            <div className="flex h-full space-x-4 min-w-[300px] md:min-w-[1200px] pb-4 px-4 pt-4">
              {columns.map(col => {
-               const colInstalls = installations.filter(i => i.status === col.id);
+               // Use visibleInstallations instead of raw installations
+               const colInstalls = visibleInstallations.filter(i => i.status === col.id);
                
                return (
                  <div key={col.id} className={`flex-1 min-w-[280px] md:min-w-[340px] rounded-xl flex flex-col border ${col.color} h-full`}>

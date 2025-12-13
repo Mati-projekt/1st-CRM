@@ -18,7 +18,9 @@ export enum ProductCategory {
   ENERGY_STORAGE = 'Magazyny Energii',
   HEAT_PUMP = 'Pompy Ciepła',
   BOILER = 'Kotły',
-  HEATING_ACCESSORY = 'Akcesoria Grzewcze',
+  HEATING_ACCESSORY = 'Akcesoria Grzewcze (Ogólne)',
+  ACCESSORY_HEAT_PUMP = 'Akcesoria Pompa Ciepła',
+  ACCESSORY_PELLET = 'Akcesoria Piec na Pellet',
   ACCESSORIES = 'Akcesoria PV',
   ADDONS = 'Dodatki',
   SERVICE = 'Usługi'
@@ -32,7 +34,7 @@ export enum UserRole {
   OFFICE = 'BIURO'
 }
 
-export type AppTool = 'MENU' | 'PRESENTATION' | 'CALC_PV' | 'CALC_ME' | 'CALC_PV_WIND' | 'CALC_HEAT';
+export type AppTool = 'MENU' | 'CALC_PV' | 'CALC_ME' | 'CALC_PV_WIND' | 'CALC_HEAT';
 
 export interface SalesSettings {
   location?: string;

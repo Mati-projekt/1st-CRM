@@ -1,3 +1,5 @@
+
+// ... (imports)
 import React, { useState, useEffect } from 'react';
 import { supabase } from './services/supabaseClient';
 import { 
@@ -19,10 +21,9 @@ import { AnnouncementCreator } from './components/AnnouncementCreator';
 import { AnnouncementModal } from './components/AnnouncementModal';
 import { NotificationsCenter } from './components/NotificationsCenter';
 import { MOCK_INVENTORY, MOCK_CUSTOMERS, MOCK_INSTALLATIONS, MOCK_USERS, MOCK_TASKS, MOCK_MESSAGES } from './constants';
-import { Loader2, Sun } from 'lucide-react';
+import { Loader2, Sun, Menu } from 'lucide-react';
 
-// --- MAPPING HELPERS (DB snake_case <-> App camelCase) ---
-
+// ... (Mapping helpers remain the same)
 const mapProfileFromDB = (p: any): User => ({
   id: p.id,
   name: p.name || p.email, // Fallback name
@@ -82,7 +83,7 @@ const mapInstallationToDB = (inst: Partial<Installation>) => {
     address: inst.address,
     system_size_kw: inst.systemSizeKw,
     status: inst.status,
-    type: inst.type, // Map Type
+    // Removed 'type' field as it is missing in DB schema and causing PGRST204 error
     price: inst.price,
     paid_amount: inst.paidAmount,
     panel_model: inst.panelModel,
@@ -108,7 +109,7 @@ const mapInstallationFromDB = (dbInst: any): Installation => {
     address: dbInst.address,
     systemSizeKw: dbInst.system_size_kw,
     status: dbInst.status,
-    type: dbInst.type, // Map Type
+    type: dbInst.type, // Map Type if present (will be undefined if column missing)
     price: dbInst.price,
     paidAmount: dbInst.paid_amount,
     panelModel: dbInst.panel_model,
@@ -186,12 +187,10 @@ const mapMessageFromDB = (m: any): Message => ({
 });
 
 const App: React.FC = () => {
+  // ... (State declarations remain the same)
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  // NEW: State for loading screen
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(false);
   const [view, setView] = useState<ViewState>('DASHBOARD');
-  
-  // Data States
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [installations, setInstallations] = useState<Installation[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -200,19 +199,15 @@ const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  
-  // App State
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({ cat2MarkupType: 'PERCENT', cat2MarkupValue: 5 });
   const [currentTool, setCurrentTool] = useState<AppTool>('MENU');
   const [calculatorState, setCalculatorState] = useState<CalculatorState | HeatingCalculatorState | StorageCalculatorState | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
-  
-  // UI State
   const [notification, setNotification] = useState<{message: string, type: NotificationType} | null>(null);
   const [pendingAnnouncement, setPendingAnnouncement] = useState<Announcement | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Load Notifications from LocalStorage on mount to persist read status
+  // ... (Effects remain the same)
   useEffect(() => {
     const savedNotifications = localStorage.getItem('appNotifications');
     if (savedNotifications) {
@@ -224,30 +219,22 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Save Notifications to LocalStorage whenever they change
   useEffect(() => {
     if (notifications.length > 0) {
       localStorage.setItem('appNotifications', JSON.stringify(notifications));
     }
   }, [notifications]);
 
-  // LOW STOCK NOTIFICATION LOGIC (FIXED)
   useEffect(() => {
     if (inventory.length === 0) return;
-
     setNotifications(prevNotifications => {
+      // ... (Low stock logic remains the same)
       let updatedNotifications = [...prevNotifications];
       let hasChanges = false;
-
       inventory.forEach(item => {
-        // 1. Check if item is low stock
         if (item.quantity <= item.minQuantity) {
-          const existingNotif = updatedNotifications.find(
-            n => n.linkTo?.id === item.id && n.category === 'STOCK'
-          );
-
+          const existingNotif = updatedNotifications.find(n => n.linkTo?.id === item.id && n.category === 'STOCK');
           if (!existingNotif) {
-            // CASE: New low stock - Create notification
             updatedNotifications.unshift({
               id: Date.now().toString() + Math.random().toString(),
               category: 'STOCK',
@@ -259,93 +246,59 @@ const App: React.FC = () => {
             });
             hasChanges = true;
           } else if (existingNotif.read) {
-            // CASE: Existing but read - check if 48 hours passed SINCE IT WAS READ (handled by resetting date on read)
             const notifDate = new Date(existingNotif.date);
             const now = new Date();
             const diffTime = Math.abs(now.getTime() - notifDate.getTime());
             const diffHours = diffTime / (1000 * 60 * 60);
-
             if (diffHours >= 48) {
-              // Renew notification: mark unread and update date to NOW
-              // CRITICAL: We create a new object to trigger UI update
               const renewedNotif = {
                  ...existingNotif,
                  read: false,
-                 date: new Date().toISOString(), // Update timestamp to now
+                 date: new Date().toISOString(),
                  message: `Przypomnienie: Produkt ${item.name} nadal ma niski stan (${item.quantity} ${item.unit}).`
               };
-              
-              // Remove old, add new at top
               updatedNotifications = updatedNotifications.filter(n => n.id !== existingNotif.id);
               updatedNotifications.unshift(renewedNotif);
               hasChanges = true;
             }
           }
         } else {
-          // 2. Check if item is healthy but has lingering stock notification
-          const existingIndex = updatedNotifications.findIndex(
-            n => n.linkTo?.id === item.id && n.category === 'STOCK'
-          );
-
+          const existingIndex = updatedNotifications.findIndex(n => n.linkTo?.id === item.id && n.category === 'STOCK');
           if (existingIndex !== -1) {
-            // Remove notification if stock is replenished
             updatedNotifications.splice(existingIndex, 1);
             hasChanges = true;
           }
         }
       });
-
       return hasChanges ? updatedNotifications : prevNotifications;
     });
   }, [inventory]);
 
-  // Check for existing session on mount
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        handleLogin(); 
-      }
+      if (session) { handleLogin(); }
     };
     checkSession();
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        setCurrentUser(null);
-      }
+      if (!session) { setCurrentUser(null); }
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
-  // HYBRID DATA FETCHING: Try Supabase -> Fail -> Load Mocks
-  // Changed dependency to currentUser.id to avoid loop on profile/settings update
   useEffect(() => {
     const fetchData = async () => {
       if (!currentUser) return;
-      
       try {
-        // PERFORMANCE OPTIMIZATION: Fetch all data in parallel using Promise.all
-        // This avoids the "waterfall" effect where each request waits for the previous one to finish.
-        // NOTE: Optimized 'customers' select to NOT fetch heavy JSONB columns (files/photos) on initial load.
-        const [
-          usersRes,
-          customersRes,
-          inventoryRes,
-          installationsRes,
-          messagesRes,
-          settingsRes
-        ] = await Promise.all([
+        const [usersRes, customersRes, inventoryRes, installationsRes, messagesRes, settingsRes] = await Promise.all([
           supabase.from('profiles').select('*'),
-          // Optimizing Customer Fetch - Excluding heavy files/audit_photos for list view
-          supabase.from('customers').select('id, name, email, phone, address, rep_id, notes, offers'), 
+          supabase.from('customers').select('*'), 
           supabase.from('inventory').select('*'),
           supabase.from('installations').select('*'),
           supabase.from('messages').select('*').or(`from_id.eq.${currentUser.id},to_id.eq.${currentUser.id}`),
           supabase.from('system_settings').select('*').single()
         ]);
 
-        // 1. PROFILES (Users)
         if (usersRes.error) throw usersRes.error;
         if (!usersRes.data || usersRes.data.length === 0) {
            console.warn("DB connected but empty. Seeding Mock Users...");
@@ -354,50 +307,25 @@ const App: React.FC = () => {
            setUsers(usersRes.data.map(mapProfileFromDB));
         }
 
-        // 2. CUSTOMERS
-        if (customersRes.data) {
-           // We map what we got. Note that files/auditPhotos will be empty/undefined here initially
-           // ideally we would fetch them on demand when clicking a customer
-           setCustomers(customersRes.data.map(mapCustomerFromDB));
-        } else if (customersRes.error) {
-           setCustomers(MOCK_CUSTOMERS);
-        }
+        if (customersRes.data) setCustomers(customersRes.data.map(mapCustomerFromDB));
+        else if (customersRes.error) setCustomers(MOCK_CUSTOMERS);
 
-        // 3. INVENTORY
-        if (inventoryRes.data) {
-           setInventory(inventoryRes.data.map(mapInventoryFromDB));
-        } else if (inventoryRes.error) {
-           setInventory(MOCK_INVENTORY);
-        }
+        if (inventoryRes.data) setInventory(inventoryRes.data.map(mapInventoryFromDB));
+        else if (inventoryRes.error) setInventory(MOCK_INVENTORY);
 
-        // 4. INSTALLATIONS
-        if (installationsRes.data) {
-           setInstallations(installationsRes.data.map(mapInstallationFromDB));
-        } else if (installationsRes.error) {
-           setInstallations(MOCK_INSTALLATIONS);
-        }
+        if (installationsRes.data) setInstallations(installationsRes.data.map(mapInstallationFromDB));
+        else if (installationsRes.error) setInstallations(MOCK_INSTALLATIONS);
 
-        // 5. MESSAGES
-        if (messagesRes.data && messagesRes.data.length > 0) {
-           setMessages(messagesRes.data.map(mapMessageFromDB));
-        } else {
-           setMessages(MOCK_MESSAGES);
-        }
+        if (messagesRes.data && messagesRes.data.length > 0) setMessages(messagesRes.data.map(mapMessageFromDB));
+        else setMessages(MOCK_MESSAGES);
 
-        // 6. SYSTEM SETTINGS - FETCH FROM DB
         if (settingsRes.data) {
-           setSystemSettings({
-              cat2MarkupType: settingsRes.data.cat2_markup_type || 'PERCENT',
-              cat2MarkupValue: settingsRes.data.cat2_markup_value || 5
-           });
+           setSystemSettings({ cat2MarkupType: settingsRes.data.cat2_markup_type || 'PERCENT', cat2MarkupValue: settingsRes.data.cat2_markup_value || 5 });
         } else {
            const savedSettings = localStorage.getItem('systemSettings');
-           if (savedSettings) {
-              setSystemSettings(JSON.parse(savedSettings));
-           }
+           if (savedSettings) setSystemSettings(JSON.parse(savedSettings));
         }
         
-        // 7. TASKS (Still Mock/Local for now as per previous instructions unless asked)
         setTasks(MOCK_TASKS);
 
       } catch (err) {
@@ -410,12 +338,9 @@ const App: React.FC = () => {
         setMessages(MOCK_MESSAGES);
         showNotification("Błąd bazy danych. Pracujesz na danych lokalnych.", 'info');
       } finally {
-        // TURN OFF LOADING SCREEN when all data is ready (or error happened)
-        // Add a small artificial delay for better UX (smooth transition)
         setTimeout(() => setIsInitialLoading(false), 800);
       }
     };
-    
     fetchData();
   }, [currentUser?.id]);
 
@@ -424,21 +349,29 @@ const App: React.FC = () => {
   };
 
   const handleLogin = async (fallbackUser?: User) => {
-    setIsInitialLoading(true); // Start loading immediately
-    
-    if (fallbackUser) {
-       setCurrentUser(fallbackUser);
-       return;
-    }
-
+    setIsInitialLoading(true);
+    if (fallbackUser) { setCurrentUser(fallbackUser); return; }
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      let { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
+      if (!profile && user.email) {
+         const { data: profileByEmail } = await supabase.from('profiles').select('*').eq('email', user.email).maybeSingle();
+         if (profileByEmail) profile = profileByEmail;
+      }
       if (profile) {
         setCurrentUser(mapProfileFromDB(profile));
       } else {
-        // Fallback: If auth works but profile missing (shouldn't happen with triggers)
-        setCurrentUser(MOCK_USERS[0]); 
+        console.warn("Profile not found in DB. Creating temp session.");
+        const tempUser: User = {
+           id: user.id,
+           name: user.user_metadata?.name || user.email?.split('@')[0] || 'Użytkownik',
+           email: user.email || '',
+           role: UserRole.SALES,
+           salesSettings: { marginType: 'PERCENT', marginPV: 8, marginHeat: 10, marginStorage: 8, marginPellet: 8 },
+           salesCategory: '1',
+           commissionSplit: 50
+        };
+        setCurrentUser(tempUser);
       }
     }
   };
@@ -448,22 +381,14 @@ const App: React.FC = () => {
     setCurrentUser(null);
   };
 
-  // --- ACTIONS HANDLERS (Supabase Integration) ---
-
-  // ... (Previous Handlers for Customers, Inventory, Users, Settings remain same) ...
-  
-  // MESSAGES
   const handleSendMessage = async (msg: Message) => {
-     // Optimistic update
      setMessages(prev => [...prev, msg]);
-     
      try {
         const { error } = await supabase.from('messages').insert([{
            from_id: msg.fromId,
            to_id: msg.toId,
            content: msg.content,
            read: false,
-           // created_at auto handled
         }]);
         if (error) throw error;
      } catch(e) {
@@ -472,12 +397,9 @@ const App: React.FC = () => {
      }
   };
 
-  // Notification Handlers with "Snooze" logic for STOCK
   const handleMarkAsRead = (id: string) => {
      setNotifications(prev => prev.map(n => {
         if (n.id === id) {
-           // SPECIAL LOGIC: If marking STOCK as read, verify we reset date to NOW
-           // This ensures the 48h timer starts from the moment user CLICKED read, not from notification creation.
            return {
               ...n,
               read: true,
@@ -488,25 +410,13 @@ const App: React.FC = () => {
      }));
   };
 
-  // 1. CUSTOMERS
+  // ... (Other handlers remain the same until handleAcceptOffer)
   const handleAddCustomer = async (data: { name: string, email: string, phone: string, address: string }) => {
-      const newCust: Customer = {
-        id: crypto.randomUUID(),
-        ...data,
-        repId: currentUser?.id,
-        notes: '',
-        files: [],
-        auditPhotos: [],
-        offers: []
-      };
-      
-      // Optimistic update
+      const newCust: Customer = { id: crypto.randomUUID(), ...data, repId: currentUser?.id, notes: '', files: [], auditPhotos: [], offers: [] };
       setCustomers(prev => [...prev, newCust]);
       setSelectedCustomerId(newCust.id);
       showNotification("Klient dodany", 'success');
-
       try {
-         // USE STANDARDIZED MAPPING FUNCTION
          const dbPayload = mapCustomerToDB(newCust);
          const { error } = await supabase.from('customers').insert([dbPayload]);
          if (error) throw error;
@@ -516,44 +426,30 @@ const App: React.FC = () => {
       }
   };
 
-  // 2. INVENTORY
   const handleAddInventoryItem = async (item: InventoryItem) => {
-      // Optimistic Update
       setInventory(prev => [...prev, item]);
       showNotification("Dodano produkt", 'success');
-      
       try {
-         // Use mapped payload for DB
-         // CRITICAL FIX: Add .select() to ensure we get a response and any DB constraints throw immediately
          const { error } = await supabase.from('inventory').insert([mapInventoryToDB(item)]).select();
-         
-         if (error) {
-            throw error;
-         }
+         if (error) throw error;
       } catch (e) { 
          console.error("Error adding inventory item", e);
-         // ROLLBACK Optimistic update
          setInventory(prev => prev.filter(i => i.id !== item.id));
-         showNotification("Błąd zapisu w bazie! Produkt nie został dodany. Upewnij się, że baza danych ma najnowsze kolumny.", 'error'); 
+         showNotification("Błąd zapisu w bazie!", 'error'); 
       }
   };
 
   const handleUpdateInventoryItem = async (item: InventoryItem) => {
       setInventory(prev => prev.map(i => i.id === item.id ? item : i));
       try {
-         // CRITICAL FIX: Use UPSERT instead of UPDATE
-         // This ensures that if we edit a "Mock" item (which has an ID but isn't in DB yet),
-         // it gets created in the DB instead of failing silently.
          const { error } = await supabase.from('inventory').upsert(mapInventoryToDB(item)).select();
-         
          if (error) throw error;
       } catch(e) { 
          console.error("Error updating inventory item", e);
-         showNotification("Błąd aktualizacji w bazie. Sprawdź połączenie.", 'error');
+         showNotification("Błąd aktualizacji w bazie.", 'error');
       }
   };
 
-  // UPDATED DELETE FUNCTION
   const handleDeleteInventoryItem = async (id: string) => {
       setInventory(prev => prev.filter(i => i.id !== id));
       try {
@@ -566,24 +462,15 @@ const App: React.FC = () => {
       }
   };
 
-  // 3. EMPLOYEES (PROFILES)
   const handleAddUser = async (userData: Partial<User>, password?: string) => {
       const newId = crypto.randomUUID();
-      const newUser: User = {
-         id: newId,
-         ...userData as User
-      };
-
+      const newUser: User = { id: newId, ...userData as User };
       setUsers(prev => [...prev, newUser]);
       showNotification("Pracownik dodany do listy", 'success');
-      
       try {
          const dbPayload = mapProfileToDB(newUser);
          await supabase.from('profiles').insert([{ id: newId, ...dbPayload }]);
-         
-         if (password) {
-            showNotification(`Utwórz konto w panelu Supabase dla: ${newUser.email}`, 'info');
-         }
+         if (password) showNotification(`Utwórz konto w panelu Supabase dla: ${newUser.email}`, 'info');
       } catch (e) {
          console.error("DB Error adding user", e);
          showNotification("Błąd zapisu pracownika w bazie", 'error');
@@ -611,15 +498,10 @@ const App: React.FC = () => {
       } catch (e) { console.error(e); }
   };
 
-  // 4. SYSTEM SETTINGS
   const handleUpdateSystemSettings = async (settings: SystemSettings) => {
      setSystemSettings(settings);
      try {
-        const { error } = await supabase.from('system_settings').upsert({
-           id: 1, 
-           cat2_markup_type: settings.cat2MarkupType,
-           cat2_markup_value: settings.cat2MarkupValue
-        });
+        const { error } = await supabase.from('system_settings').upsert({ id: 1, cat2_markup_type: settings.cat2MarkupType, cat2_markup_value: settings.cat2MarkupValue });
         if (error) throw error;
         showNotification("Zapisano ustawienia systemu w bazie", 'success');
      } catch (e) {
@@ -653,14 +535,14 @@ const App: React.FC = () => {
        if (acceptedOffer.type === 'HEATING' || (acceptedOffer.type as any) === 'HEAT_PUMP') {
            const calcState = acceptedOffer.calculatorState as HeatingCalculatorState;
            const device = inventory.find(i => i.id === calcState.selectedDeviceId);
-           const totalCommission = (acceptedOffer.appliedMarkup || 0) + (acceptedOffer.personalMarkup || 0);
+           const totalCommission = (Number(acceptedOffer.appliedMarkup) || 0) + (Number(acceptedOffer.personalMarkup) || 0);
 
            newInstallation = {
               customerId: custId,
               address: customer.address,
               systemSizeKw: 0, 
               status: InstallationStatus.AUDIT,
-              type: 'HEATING', // Explicitly Set Type
+              type: 'HEATING', 
               price: acceptedOffer.finalPrice,
               paidAmount: 0,
               commissionValue: totalCommission,
@@ -668,10 +550,9 @@ const App: React.FC = () => {
            };
 
        } else if (acceptedOffer.type === 'ME') {
-           // ENERGY STORAGE ONLY
            const calcState = acceptedOffer.calculatorState as StorageCalculatorState;
            const storage = inventory.find(i => i.id === calcState.selectedStorageId);
-           const totalCommission = (acceptedOffer.appliedMarkup || 0) + (acceptedOffer.personalMarkup || 0);
+           const totalCommission = (Number(acceptedOffer.appliedMarkup) || 0) + (Number(acceptedOffer.personalMarkup) || 0);
            const capacity = (storage?.capacity || 0) * calcState.storageCount;
 
            newInstallation = {
@@ -689,52 +570,82 @@ const App: React.FC = () => {
            };
 
        } else {
-           // Default to PV or PV_STORAGE
+           // PV or PV_STORAGE
            const calcState = acceptedOffer.calculatorState as CalculatorState;
        
-           const panelModel = inventory.find(i => i.id === calcState.panelId)?.name || 'Standardowy Panel';
+           const panelItem = inventory.find(i => i.id === calcState.panelId);
+           const panelModel = panelItem?.name || 'Standardowy Panel';
            const inverterModel = inventory.find(i => i.id === calcState.inverterId)?.name || 'Standardowy Falownik';
-           const storageModel = calcState.storageId ? (inventory.find(i => i.id === calcState.storageId)?.name || 'Magazyn') : undefined;
-           const storageSize = calcState.storageId ? (inventory.find(i => i.id === calcState.storageId)?.capacity || 0) * calcState.storageCount : undefined;
+           
+           // Robust storage logic
+           const storageItem = calcState.storageId ? inventory.find(i => i.id === calcState.storageId) : undefined;
+           const storageModel = storageItem ? storageItem.name : (calcState.storageId ? 'Magazyn Energii' : undefined);
+           
+           // Ensure storage size is calculated even if inventory lookup fails (fallback to 5kWh per unit if ID exists)
+           let storageSize = 0;
+           if (calcState.storageId) {
+               const capacity = storageItem?.capacity || 5; 
+               const count = calcState.storageCount || 1;
+               storageSize = capacity * count;
+           }
 
-           const totalCommission = (acceptedOffer.appliedMarkup || 0) + (acceptedOffer.personalMarkup || 0);
+           const totalCommission = (Number(acceptedOffer.appliedMarkup) || 0) + (Number(acceptedOffer.personalMarkup) || 0);
+           
+           // Calculate System Size correctly from Panels, not consumption
+           const panelPower = panelItem?.power || 400; // default 400W
+           const systemSizeKw = (panelPower * calcState.panelCount) / 1000;
 
            newInstallation = {
               customerId: custId,
               address: customer.address,
-              systemSizeKw: calcState.consumption ? calcState.consumption / 1000 : 0, 
+              systemSizeKw: systemSizeKw,
               status: InstallationStatus.AUDIT,
-              type: acceptedOffer.type === 'PV_STORAGE' ? 'PV_STORAGE' : 'PV', // Explicit Type
+              type: storageSize > 0 ? 'PV_STORAGE' : 'PV', // Dynamically determine type based on storage presence
               price: acceptedOffer.finalPrice,
               paidAmount: 0,
               panelModel,
               inverterModel,
               storageModel,
-              storageSizeKw: storageSize,
+              storageSizeKw: storageSize, // Now guaranteed to be > 0 if ID exists
               mountingSystem: calcState.installationType === 'ROOF' ? `Dach ${calcState.roofMaterial}` : 'Grunt',
               trenchLength: calcState.trenchLength,
               commissionValue: totalCommission 
            };
        }
 
+       if (newInstallation && (newInstallation.commissionValue === undefined || isNaN(newInstallation.commissionValue))) {
+          newInstallation.commissionValue = 0;
+       }
+
        if (newInstallation) {
            const tempId = crypto.randomUUID();
-           const createdInst = { 
-              ...newInstallation, 
+           const createdInst: Installation = { 
               id: tempId, 
+              status: InstallationStatus.AUDIT,
               paymentHistory: [], 
-              commissionHistory: [] 
+              commissionHistory: [], 
+              equipmentStatus: {
+                 panelsPicked: false,
+                 inverterPicked: false,
+                 storagePicked: false,
+                 mountingPicked: false
+              },
+              ...newInstallation
            } as Installation;
            
            setInstallations(prev => [...prev, createdInst]);
            
            try {
-              const dbPayload = mapInstallationToDB(newInstallation);
+              const dbPayload = mapInstallationToDB(createdInst);
               const { data, error } = await supabase.from('installations').insert([dbPayload]).select().single();
+              if (error) throw error;
               if (data) {
                  setInstallations(prev => prev.map(i => i.id === tempId ? mapInstallationFromDB(data) : i));
               }
-           } catch (e) { console.error(e) }
+           } catch (e: any) { 
+              console.error("Installation Creation Error:", e);
+              showNotification(`Błąd tworzenia instalacji w bazie: ${e.message || 'Nieznany błąd'}`, 'error');
+           }
            
            const notif: AppNotification = {
               id: Date.now().toString(),
@@ -750,16 +661,12 @@ const App: React.FC = () => {
     } 
  };
 
-  // 6. USER SETTINGS (PERSISTENCE)
   const handleUpdateUserSettings = async (settings: any) => {
       if (!currentUser) return;
       const updatedUser = { ...currentUser, salesSettings: settings };
       setCurrentUser(updatedUser);
-      
       try {
-         const { error } = await supabase.from('profiles').update({
-            sales_settings: settings
-         }).eq('id', currentUser.id);
+         const { error } = await supabase.from('profiles').update({ sales_settings: settings }).eq('id', currentUser.id);
          if (error) throw error;
       } catch (e) {
          console.error("Error saving user settings", e);
@@ -771,28 +678,23 @@ const App: React.FC = () => {
     return <Login onLogin={handleLogin} onLoginStart={() => setIsInitialLoading(true)} />;
   }
 
+  // ... (JSX return block remains the same)
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-900 relative">
-      
-      {/* --- NEW: Loading Overlay (Modernized) --- */}
+      {/* ... (Loading overlay same) ... */}
       {isInitialLoading && (
         <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-slate-900/40 backdrop-blur-md animate-fade-in transition-opacity duration-500">
-           
-           {/* Background Pulse Effect */}
            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/20 rounded-full blur-[100px] animate-pulse"></div>
-
            <div className="relative z-10 text-center flex flex-col items-center p-8 rounded-3xl bg-white/10 border border-white/10 shadow-2xl backdrop-blur-xl">
               <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 shadow-xl mb-6 animate-bounce-slow">
                  <Sun className="w-10 h-10 text-white" />
               </div>
-              
               <h1 className="text-3xl font-bold text-white mb-2 tracking-tight drop-shadow-sm">
                  Witaj, {currentUser.name.split(' ')[0]}!
               </h1>
               <p className="text-slate-200 text-base mb-8 font-medium">
                  Przygotowujemy Twój pulpit...
               </p>
-              
               <div className="flex items-center space-x-3 bg-black/20 px-5 py-2.5 rounded-full border border-white/5">
                  <Loader2 className="w-5 h-5 text-amber-400 animate-spin" />
                  <span className="text-sm font-semibold text-white tracking-wide">Ładowanie CRM</span>
@@ -814,6 +716,23 @@ const App: React.FC = () => {
         />
         
         <main className="flex-1 flex flex-col h-full overflow-hidden relative w-full">
+           
+           {/* MOBILE HEADER - NEW ADDITION */}
+           <div className="md:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between shrink-0 z-30 shadow-sm">
+              <div className="flex items-center space-x-3">
+                 <div className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white p-1.5 rounded-lg shadow-md">
+                    <Sun className="w-5 h-5" />
+                 </div>
+                 <span className="font-bold text-slate-800 text-lg tracking-wide">Family CRM</span>
+              </div>
+              <button 
+                 onClick={() => setIsSidebarOpen(true)} 
+                 className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                 <Menu className="w-6 h-6" />
+              </button>
+           </div>
+
           {view === 'DASHBOARD' && (
             <Dashboard 
               installations={installations}
@@ -824,7 +743,7 @@ const App: React.FC = () => {
               tasks={tasks}
               onAddTask={(t) => setTasks([...tasks, t])}
               messages={messages}
-              users={users} // Pass users for messaging lookup
+              users={users} 
               onSendMessage={handleSendMessage}
               onUpdateSettings={handleUpdateUserSettings}
               onNavigateToCustomer={(id) => { setSelectedCustomerId(id); setView('CUSTOMERS'); }}
@@ -837,7 +756,6 @@ const App: React.FC = () => {
             />
           )}
 
-          {/* ... Other Views (Notifications, Customers, etc.) remain unchanged ... */}
           {view === 'NOTIFICATIONS' && (
              <NotificationsCenter 
                 notifications={notifications}
@@ -994,7 +912,7 @@ const App: React.FC = () => {
                  setInstallations(prev => prev.map(inst => inst.id === i.id ? i : inst));
                  await supabase.from('installations').update(mapInstallationToDB(i)).eq('id', i.id);
               }}
-              currentUserRole={currentUser.role}
+              currentUser={currentUser}
             />
           )}
 

@@ -197,15 +197,16 @@ export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, o
                    onClick={handleAddNew}
                    className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold transition-colors flex items-center justify-center shadow-lg shadow-blue-200"
                  >
-                   <Plus className="w-5 h-5 mr-2" /> Dodaj Produkt
+                   <Plus className="w-5 h-5 mr-2" /> <span className="hidden md:inline">Dodaj Produkt</span><span className="md:hidden">Dodaj</span>
                  </button>
              </div>
            )}
         </div>
 
-        {/* Filters Stack */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4">
-           <div className="md:col-span-4 relative">
+        {/* Filters Stack - Optimized for Mobile Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-12 gap-3 md:gap-4">
+           {/* Search takes full width on small mobile, half on tablet */}
+           <div className="col-span-2 md:col-span-4 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
               <input 
                 type="text" 
@@ -215,30 +216,34 @@ export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, o
                 className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
               />
            </div>
-           <div className="md:col-span-3">
+           
+           {/* Category - Half Width on Mobile */}
+           <div className="col-span-1 md:col-span-3">
               <div className="relative">
                 <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                 <select 
                   value={filterCategory}
                   onChange={(e) => setFilterCategory(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none appearance-none bg-white"
+                  className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none appearance-none bg-white text-sm"
                 >
-                  <option value="ALL">Wszystkie kategorie</option>
+                  <option value="ALL">Kategorie</option>
                   {Object.values(ProductCategory).map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
               </div>
            </div>
-           <div className="md:col-span-3 flex items-center space-x-2">
+           
+           {/* Sort - Half Width on Mobile */}
+           <div className="col-span-1 md:col-span-3 flex items-center space-x-2">
               <div className="relative w-full">
                  <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                  <select 
                     value={sortField}
                     onChange={(e) => setSortField(e.target.value as SortField)}
-                    className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none appearance-none bg-white"
+                    className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none appearance-none bg-white text-sm"
                  >
-                    <option value="dateAdded">Data dodania</option>
+                    <option value="dateAdded">Data</option>
                     <option value="name">Nazwa</option>
                     <option value="quantity">Ilość</option>
                     {!isInstaller && <option value="price">Cena</option>}
@@ -251,7 +256,9 @@ export const Inventory: React.FC<InventoryProps> = ({ inventory, onUpdateItem, o
                  {sortOrder === 'asc' ? '↑' : '↓'}
               </button>
            </div>
-           <div className="md:col-span-2">
+           
+           {/* Low Stock - Full Width on Mobile for visibility */}
+           <div className="col-span-2 md:col-span-2">
                <button 
                  onClick={() => setFilterLowStock(!filterLowStock)}
                  className={`w-full h-full py-3 px-4 rounded-xl font-medium border flex items-center justify-center transition-all ${filterLowStock ? 'bg-red-50 border-red-200 text-red-600' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}

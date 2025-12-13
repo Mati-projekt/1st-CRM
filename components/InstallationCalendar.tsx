@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { Installation, Customer, User, UserRole, InstallationStatus } from '../types';
 import { ChevronLeft, ChevronRight, Filter, Calendar as CalendarIcon, MapPin, Zap, User as UserIcon, Hammer, Battery, RotateCcw, Flame } from 'lucide-react';
@@ -31,6 +32,7 @@ export const InstallationCalendar: React.FC<InstallationCalendarProps> = ({
   
   // Default filtering for Installer: Only show their own installations
   const isInstaller = currentUser.role === UserRole.INSTALLER;
+  const isSales = currentUser.role === UserRole.SALES;
   const [selectedTeamId, setSelectedTeamId] = useState<string>(isInstaller ? currentUser.id : 'ALL');
 
   const installerTeams = users.filter(u => u.role === UserRole.INSTALLER);
@@ -46,14 +48,20 @@ export const InstallationCalendar: React.FC<InstallationCalendarProps> = ({
       if (!inst.dateScheduled) return false;
       if (inst.status === InstallationStatus.NEW) return false;
 
-      // Team Check
+      // Team Check (For everyone who isn't SALES or when filter is used)
       if (selectedTeamId !== 'ALL') {
         if (inst.assignedTeam !== selectedTeamId) return false;
       }
 
+      // SALES Role Filter: Only see own customers
+      if (isSales) {
+         const customer = customers.find(c => c.id === inst.customerId);
+         if (!customer || customer.repId !== currentUser.id) return false;
+      }
+
       return true;
     });
-  }, [installations, selectedTeamId]);
+  }, [installations, selectedTeamId, isSales, currentUser, customers]);
 
   const handlePrevMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
@@ -197,7 +205,7 @@ export const InstallationCalendar: React.FC<InstallationCalendarProps> = ({
          </div>
 
          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-            {/* Team Filter */}
+            {/* Team Filter - Hidden for Installer (locked) but visible for Sales (though Sales only sees own deals) */}
             <div className="relative">
                <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
                   <Filter className="w-4 h-4 text-slate-400" />

@@ -65,8 +65,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, cur
   });
 
   return (
+    <>
+    {/* Mobile Backdrop */}
+    {isOpen && (
+      <div 
+        className="fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-sm transition-opacity"
+        onClick={onClose}
+      />
+    )}
+    
     <div className={`
-      fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-white flex flex-col h-full shadow-xl transition-transform duration-300 transform 
+      fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-white flex flex-col h-full shadow-2xl transition-transform duration-300 transform 
       ${isOpen ? 'translate-x-0' : '-translate-x-full'} 
       md:relative md:translate-x-0
     `}>
@@ -75,18 +84,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, cur
           <Sun className="text-yellow-400 w-8 h-8" />
           <h1 className="text-xl font-bold tracking-wider">Family CRM</h1>
         </div>
-        <button onClick={onClose} className="md:hidden text-slate-400 hover:text-white">
+        <button onClick={onClose} className="md:hidden text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800">
           <X className="w-6 h-6" />
         </button>
       </div>
       
-      <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+      <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar">
         {visibleMenuItems.map((item) => {
           const isActive = currentView === item.id;
           return (
             <button
               key={item.id}
-              onClick={() => onChangeView(item.id as ViewState)}
+              onClick={() => { onChangeView(item.id as ViewState); onClose(); }}
               className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-all duration-200 ${
                 isActive 
                   ? 'bg-blue-600 text-white shadow-lg' 
@@ -124,5 +133,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, cur
         </button>
       </div>
     </div>
+    </>
   );
 };

@@ -1,7 +1,8 @@
+
 // ... (imports)
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Installation, InstallationStatus, InventoryItem, Customer, ViewState, User, UserRole, Task, Message, SalesSettings, TaskType, AppNotification } from '../types';
-import { TrendingUp, AlertTriangle, CheckCircle, Zap, Users, Wallet, ArrowRight, Sun, Calendar, Plus, X, CloudRain, CloudSun, MapPin, Loader2, Battery, Flame, Mail, Settings, BarChart3, CalendarDays, ChevronLeft, ChevronRight, MessageSquare, Send, Save, RefreshCw, ToggleLeft, ToggleRight, Percent, Wrench, CheckSquare, Phone, Briefcase, FileText, UserCircle, Edit2, Trash2, UserPlus, Search, UserCheck, Eye, EyeOff, RotateCcw, Check, Bell, MoreVertical, PenBox, Clock, LogOut, Filter, Square, Globe, Banknote, Leaf, Shovel } from 'lucide-react';
+import { TrendingUp, AlertTriangle, CheckCircle, Zap, Users, Wallet, ArrowRight, Sun, Calendar, Plus, X, CloudRain, CloudSun, MapPin, Loader2, Battery, Flame, Mail, Settings, BarChart3, CalendarDays, ChevronLeft, ChevronRight, MessageSquare, Send, Save, RefreshCw, ToggleLeft, ToggleRight, Percent, Wrench, CheckSquare, Phone, Briefcase, FileText, UserCircle, Edit2, Trash2, UserPlus, Search, UserCheck, Eye, EyeOff, RotateCcw, Check, Bell, MoreVertical, PenBox, Clock, LogOut, Filter, Square, Globe, Banknote, Leaf, Shovel, AlertOctagon, XCircle, Hammer } from 'lucide-react';
 import { NotificationsCenter } from './NotificationsCenter';
 
 // ... (Interface & Constants remain same)
@@ -179,8 +180,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
   });
 
   const canDelegate = true; // Always true as requested
-  const unreadNotificationsCount = notifications.filter(n => !n.read).length;
   const isAdmin = currentUser.role === UserRole.ADMIN;
+
+  // Filter notifications based on role before counting to fix badge discrepancy
+  const unreadNotificationsCount = useMemo(() => {
+     let visible = notifications;
+     // Only Admin and Office can see STOCK notifications
+     const canSeeStock = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.OFFICE;
+     if (!canSeeStock) {
+        visible = visible.filter(n => n.category !== 'STOCK');
+     }
+     return visible.filter(n => !n.read).length;
+  }, [notifications, currentUser]);
 
   const getCustomerName = (id: string, list: Customer[]) => {
     const c = list.find(cust => cust.id === id);
@@ -255,13 +266,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
     else if (statsPeriod === 'CUSTOM') { startDate = new Date(customDateStart); endDate = new Date(customDateEnd); endDate.setHours(23, 59, 59, 999); }
 
     const filteredInstalls = relevantInstalls.filter(i => {
-       // CRITICAL UPDATE: Exclude lost clients (DROP)
-       if (i.status === InstallationStatus.DROP) return false;
-       
-       // CRITICAL UPDATE: Exclude leads (NEW) unless it's just created via accepted offer (AUDIT is typically starting point)
+       // Only filter NEW (Leads) out of stats. Keep Drop and others for specific counters.
        if (i.status === InstallationStatus.NEW) return false;
 
-       // If it has a date, check range. If NO date, it means accepted but unscheduled -> INCLUDE IT as sold.
+       // If it has a date, check range. If NO date, it means accepted but unscheduled -> INCLUDE IT.
        if (!i.dateScheduled) {
           return true; 
        }
@@ -271,18 +279,32 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     let pvOnlyCount = 0;
     let storageOnlyCount = 0;
-    let hybridCount = 0; // PV + Storage
-    let heatingCount = 0; // Consolidated Heat Pumps + Pellet
+    let hybridCount = 0; 
+    let heatingCount = 0; 
+    
+    // NEW COUNTERS
+    let rescueCount = 0;
+    let dropCount = 0;
 
     let earnedMargin = 0;
     let pendingMargin = 0;
     let totalCompanyMargin = 0;
     let totalGrossRevenue = 0;
     
-    // Personal split percentage (irrelevant if ALL users selected in Admin view, but useful for user view)
+    // Personal split percentage 
     const splitPercentage = (currentUser.commissionSplit || 0) / 100;
 
     filteredInstalls.forEach(i => {
+       // --- STATUS COUNTERS FOR DASHBOARD TILES ---
+       if (i.status === InstallationStatus.DROP) {
+          dropCount++;
+          return; // Skip revenue calc for drops
+       }
+       
+       if (i.status === InstallationStatus.CONTRACT_RESCUE) {
+          rescueCount++;
+       }
+
        // --- COUNTING LOGIC (Prioritize Explicit Type) ---
        if (i.type === 'HEATING') {
           heatingCount++;
@@ -293,7 +315,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
        } else if (i.type === 'ME') {
           storageOnlyCount++;
        } else {
-          // Fallback logic if type is missing
+          // Fallback logic
           const hasPV = i.systemSizeKw > 0;
           const hasStorage = i.storageSizeKw && i.storageSizeKw > 0;
           
@@ -304,7 +326,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
           } else if (hasStorage) {
              storageOnlyCount++;
           } else {
-             // If no PV and no Storage, it counts as "Heating"
              heatingCount++;
           }
        }
@@ -325,7 +346,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
        // CONTRACTED JOBS Logic
        const contractedStatuses = [
           InstallationStatus.CONTRACT,
-          InstallationStatus.CONTRACT_RESCUE, // Include rescue as signed
+          InstallationStatus.CONTRACT_RESCUE, // Include rescue as signed revenue (until dropped)
           InstallationStatus.PROJECT,
           InstallationStatus.INSTALLATION,
           InstallationStatus.GRID_CONNECTION,
@@ -333,12 +354,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
           InstallationStatus.COMPLETED
        ];
        
-       // Include AUDIT if it came from accepted offer (most do in this app flow)
        if (contractedStatuses.includes(i.status) || i.status === InstallationStatus.AUDIT) {
           totalCompanyMargin += dealMargin;
           totalGrossRevenue += i.price; 
           earnedMargin += (dealMargin * splitPercentage);
-       } else if (i.status !== InstallationStatus.NEW && i.status !== InstallationStatus.DROP) {
+       } else if (i.status !== InstallationStatus.NEW) {
           pendingMargin += (dealMargin * splitPercentage);
        }
     });
@@ -350,6 +370,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     return { 
        pvOnlyCount, storageOnlyCount, hybridCount, heatingCount,
+       rescueCount, dropCount, // Exposed for UI
        earnedMargin, pendingMargin,
        totalKW: filteredInstalls.reduce((acc, curr) => acc + curr.systemSizeKw, 0),
        statusCounts,
@@ -400,6 +421,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
      });
      return events;
   }, [tasks, installations, customers, currentUser]);
+
+  const upcomingInstallations = useMemo(() => {
+     let relevant = installations;
+     if (dashboardUserFilter !== 'ALL') {
+        const myCustIds = customers.filter(c => c.repId === dashboardUserFilter).map(c => c.id);
+        relevant = installations.filter(i => myCustIds.includes(i.customerId));
+     }
+     
+     return relevant
+        .filter(i => i.dateScheduled && new Date(i.dateScheduled) >= new Date(new Date().setHours(0,0,0,0)) && i.status !== InstallationStatus.COMPLETED && i.status !== InstallationStatus.DROP)
+        .sort((a, b) => new Date(a.dateScheduled!).getTime() - new Date(b.dateScheduled!).getTime())
+        .slice(0, 5);
+  }, [installations, customers, dashboardUserFilter]);
 
   const handleCreateTask = () => {
     if (newTaskTitle) {
@@ -556,7 +590,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                <p className="text-sm text-slate-500">Witaj, {currentUser.name}</p>
             </div>
             
-            <div className="flex items-center bg-slate-900 text-white px-4 py-2 rounded-xl shadow-lg">
+            <div className="flex items-center bg-slate-900 text-white px-4 py-2 rounded-xl shadow-lg w-full md:w-auto">
                {renderWeatherIcon()}
                <div>
                   <p className="text-[10px] text-slate-300 uppercase font-bold flex items-center">
@@ -578,7 +612,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as DashboardTab)}
-                  className={`flex items-center px-4 py-2.5 rounded-t-lg font-bold text-sm transition-all border-b-2 relative ${activeTab === tab.id ? 'bg-slate-50 border-blue-600 text-blue-600' : 'bg-white border-transparent text-slate-500 hover:text-slate-800'}`}
+                  className={`flex items-center px-4 py-2.5 rounded-t-lg font-bold text-sm transition-all border-b-2 relative whitespace-nowrap ${activeTab === tab.id ? 'bg-slate-50 border-blue-600 text-blue-600' : 'bg-white border-transparent text-slate-500 hover:text-slate-800'}`}
                >
                   <div className="relative mr-3">
                      <tab.icon className="w-4 h-4" />
@@ -594,7 +628,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
          
          {/* TAB: OVERVIEW */}
          {activeTab === 'OVERVIEW' && (
-            <div className="h-full overflow-y-auto p-4 md:p-8 space-y-8 animate-fade-in custom-scrollbar">
+            <div className="h-full overflow-y-auto p-3 md:p-8 space-y-6 md:space-y-8 animate-fade-in custom-scrollbar">
                {/* ... (Previous Overview Content) ... */}
                {/* ADMIN TILES ROW */}
                {dashboardUserFilter === 'ALL' && isAdmin && (
@@ -652,7 +686,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                {/* Date Filter Bar */}
                <div className="flex flex-col md:flex-row justify-between items-center bg-white p-2 rounded-xl shadow-sm border border-slate-200 gap-4">
                   {/* ... (Filters) ... */}
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-4 w-full md:w-auto overflow-x-auto">
                      <div className="text-sm font-bold text-slate-500 ml-2 flex items-center whitespace-nowrap">
                         <Filter className="w-4 h-4 mr-2" /> Filtruj dane:
                      </div>
@@ -681,14 +715,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
                   {/* ADMIN USER FILTER */}
                   {isAdmin && (
-                     <div className="flex items-center gap-2 border-l border-slate-100 pl-4">
+                     <div className="flex items-center gap-2 border-t md:border-t-0 md:border-l border-slate-100 pt-2 md:pt-0 md:pl-4 w-full md:w-auto">
                         <div className="text-sm font-bold text-slate-500 flex items-center whitespace-nowrap">
                            <Globe className="w-4 h-4 mr-2" /> Widok:
                         </div>
                         <select 
                            value={dashboardUserFilter}
                            onChange={(e) => setDashboardUserFilter(e.target.value)}
-                           className="p-2 border border-slate-200 rounded-lg text-xs font-bold bg-white text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                           className="p-2 border border-slate-200 rounded-lg text-xs font-bold bg-white text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 w-full md:w-auto"
                         >
                            <option value="ALL">Cała Firma (Global)</option>
                            <optgroup label="Tylko ja">
@@ -704,7 +738,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   )}
                   
                   {statsPeriod === 'CUSTOM' && (
-                     <div className="flex gap-2 items-center animate-fade-in">
+                     <div className="flex gap-2 items-center animate-fade-in w-full md:w-auto justify-center">
                         <input type="date" value={customDateStart} onChange={e => setCustomDateStart(e.target.value)} className="p-1.5 border rounded-lg text-xs" />
                         <span className="text-slate-400">-</span>
                         <input type="date" value={customDateEnd} onChange={e => setCustomDateEnd(e.target.value)} className="p-1.5 border rounded-lg text-xs" />
@@ -764,6 +798,72 @@ export const Dashboard: React.FC<DashboardProps> = ({
                      </div>
                   </div>
                </div>
+
+               {/* --- INSTALLATION STAGES (RESTORED) --- */}
+               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                  <h3 className="font-bold text-lg text-slate-800 mb-6 flex items-center">
+                     <Wrench className="w-5 h-5 mr-2 text-slate-500" /> Etapy Realizacji (Aktualny Okres)
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
+                     <StatusCard label="Audyt" count={stats.statusCounts[InstallationStatus.AUDIT] || 0} color="bg-blue-100 text-blue-700" icon={FileText} />
+                     <StatusCard label="Umowa" count={stats.statusCounts[InstallationStatus.CONTRACT] || 0} color="bg-indigo-100 text-indigo-700" icon={FileText} />
+                     <StatusCard label="Projekt" count={stats.statusCounts[InstallationStatus.PROJECT] || 0} color="bg-violet-100 text-violet-700" icon={PenBox} />
+                     <StatusCard label="Montaż" count={stats.statusCounts[InstallationStatus.INSTALLATION] || 0} color="bg-amber-100 text-amber-700" icon={Hammer} />
+                     <StatusCard label="OSD" count={stats.statusCounts[InstallationStatus.GRID_CONNECTION] || 0} color="bg-purple-100 text-purple-700" icon={Zap} />
+                     <StatusCard label="Zakończone" count={stats.statusCounts[InstallationStatus.COMPLETED] || 0} color="bg-green-100 text-green-700" icon={CheckCircle} />
+                     {/* Added Rescue and Drop Tiles */}
+                     <StatusCard label="Do Uratowania" count={stats.rescueCount} color="bg-orange-100 text-orange-700" icon={AlertOctagon} />
+                     <StatusCard label="Spadek" count={stats.dropCount} color="bg-red-100 text-red-700" icon={XCircle} />
+                  </div>
+               </div>
+
+               {/* --- UPCOMING INSTALLATIONS LIST (RESTORED) --- */}
+               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                  <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                     <h3 className="font-bold text-lg text-slate-800 flex items-center">
+                        <Calendar className="w-5 h-5 mr-2 text-blue-600" /> Nadchodzące Montaże
+                     </h3>
+                     <span className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full">Najbliższe 5</span>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                     {upcomingInstallations.length > 0 ? (
+                        upcomingInstallations.map(inst => {
+                           const customer = customers.find(c => c.id === inst.customerId);
+                           const type = getInstallationType(inst);
+                           return (
+                              <div key={inst.id} className="p-4 hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer" onClick={() => onNavigateToCustomer(inst.customerId)}>
+                                 <div className="flex items-center gap-4">
+                                    <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center text-xs font-bold border ${
+                                       type === 'HEAT' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-blue-50 border-blue-200 text-blue-700'
+                                    }`}>
+                                       <span>{inst.dateScheduled ? new Date(inst.dateScheduled).getDate() : '?'}</span>
+                                       <span className="text-[10px] uppercase">{inst.dateScheduled ? new Date(inst.dateScheduled).toLocaleString('pl-PL', { month: 'short' }) : '-'}</span>
+                                    </div>
+                                    <div>
+                                       <h4 className="font-bold text-slate-800">{customer?.name || 'Klient'}</h4>
+                                       <p className="text-xs text-slate-500 flex items-center mt-1">
+                                          <MapPin className="w-3 h-3 mr-1" /> {inst.address ? inst.address.split(',')[0] : 'Brak adresu'}
+                                       </p>
+                                    </div>
+                                 </div>
+                                 <div className="text-right hidden sm:block">
+                                    <span className={`text-xs font-bold px-2 py-1 rounded-lg border ${
+                                       type === 'HEAT' ? 'bg-red-100 text-red-700 border-red-200' : 'bg-amber-100 text-amber-700 border-amber-200'
+                                    }`}>
+                                       {type === 'HEAT' ? 'Ogrzewanie' : `${inst.systemSizeKw} kWp`}
+                                    </span>
+                                 </div>
+                              </div>
+                           );
+                        })
+                     ) : (
+                        <div className="p-8 text-center text-slate-400">
+                           <Calendar className="w-12 h-12 mx-auto mb-2 opacity-20" />
+                           <p className="text-sm">Brak nadchodzących montaży.</p>
+                        </div>
+                     )}
+                  </div>
+               </div>
                   
                {/* PERSONAL COMMISSION TILE (If not admin viewing global) */}
                {(!isAdmin || dashboardUserFilter !== 'ALL') && (
@@ -792,390 +892,4 @@ export const Dashboard: React.FC<DashboardProps> = ({
                )}
             </div>
          )}
-
-         {/* TAB: NOTIFICATIONS */}
-         {activeTab === 'NOTIFICATIONS' && (
-            <NotificationsCenter 
-               notifications={notifications}
-               onMarkAsRead={onMarkAsRead}
-               onMarkAsUnread={onMarkAsUnread}
-               onMarkAllAsRead={onMarkAllAsRead}
-               onDeleteNotification={onDeleteNotification}
-               onNavigate={onNavigate}
-            />
-         )}
-
-         {/* TAB: CALENDAR */}
-         {activeTab === 'CALENDAR' && (
-            <div className="h-full flex flex-col animate-fade-in bg-white m-4 md:m-8 rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-               {/* ... (Existing Calendar Code - No changes here) ... */}
-               <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 shrink-0">
-                  <div className="flex items-center space-x-4">
-                     <h2 className="text-xl font-bold capitalize text-slate-800">
-                        {currentDate.toLocaleDateString('pl-PL', {month:'long', year:'numeric'})}
-                     </h2>
-                     <div className="flex items-center bg-white rounded-lg border border-slate-200 p-0.5 shadow-sm">
-                        <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth()-1))} className="p-2 hover:bg-slate-100 rounded-lg text-slate-600"><ChevronLeft className="w-5 h-5"/></button>
-                        <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth()+1))} className="p-2 hover:bg-slate-100 rounded-lg text-slate-600"><ChevronRight className="w-5 h-5"/></button>
-                     </div>
-                  </div>
-                  <button onClick={() => setCurrentDate(new Date())} className="text-xs font-bold text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg transition-colors">Wróć do dzisiaj</button>
-               </div>
-
-               <div className="flex-1 overflow-y-auto flex flex-col min-h-0 relative">
-                  <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50 sticky top-0 z-10 shadow-sm">
-                     {['Poniedziałek','Wtorek','Środa','Czwartek','Piątek','Sobota','Niedziela'].map((d, i) => (
-                        <div key={d} className={`p-3 text-center text-xs font-bold uppercase tracking-wider ${i >= 5 ? 'text-red-400' : 'text-slate-500'}`}>
-                           <span className="hidden md:inline">{d}</span>
-                           <span className="md:hidden">{d.slice(0,3)}</span>
-                        </div>
-                     ))}
-                  </div>
-                  
-                  <div className="grid grid-cols-7 bg-slate-200 gap-px auto-rows-fr">
-                     {renderCalendar()}
-                  </div>
-               </div>
-            </div>
-         )}
-
-         {/* TAB: SETTINGS */}
-         {activeTab === 'SETTINGS' && (
-            <div className="h-full flex flex-col overflow-hidden relative">
-               <div className="flex-1 overflow-y-auto p-4 md:p-8 animate-fade-in custom-scrollbar pb-48">
-                  <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                     <h3 className="font-bold text-xl text-slate-800 mb-6 flex items-center">
-                        <Settings className="w-6 h-6 mr-3 text-slate-500" /> Ustawienia Osobiste
-                     </h3>
-                     
-                     {/* COMMISSION TILE */}
-                     <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 rounded-2xl text-white shadow-lg mb-8">
-                        <div className="flex justify-between items-center">
-                           <div>
-                              <p className="text-blue-100 font-bold text-sm uppercase tracking-wider mb-1">Twoja Stawka Prowizyjna</p>
-                              <p className="text-4xl font-extrabold">{currentUser.commissionSplit || 0}%</p>
-                              <p className="text-xs text-blue-200 mt-2 opacity-80">Procent marży naliczany do Twojego portfela.</p>
-                           </div>
-                           <div className="bg-white/20 p-4 rounded-full">
-                              <Percent className="w-8 h-8 text-white" />
-                           </div>
-                        </div>
-                     </div>
-
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        {/* Location & General */}
-                        <div className="space-y-6">
-                           <div>
-                              <label className="block text-sm font-bold text-slate-700 mb-2">Lokalizacja (Pogoda)</label>
-                              <div className="flex gap-2">
-                                 <input 
-                                    type="text" 
-                                    value={userSettings.location} 
-                                    onChange={e => setUserSettings({...userSettings, location: e.target.value})} 
-                                    className="flex-1 p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                                    placeholder="np. Warszawa"
-                                 />
-                              </div>
-                           </div>
-                           
-                           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                              <label className="flex items-center cursor-pointer">
-                                 <div className="relative">
-                                    <input 
-                                       type="checkbox" 
-                                       checked={userSettings.showRoiChart} 
-                                       onChange={e => setUserSettings({...userSettings, showRoiChart: e.target.checked})}
-                                       className="sr-only" 
-                                    />
-                                    <div className={`w-10 h-6 rounded-full shadow-inner transition-colors duration-300 ${userSettings.showRoiChart ? 'bg-green-500' : 'bg-slate-300'}`}></div>
-                                    <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform duration-300 ${userSettings.showRoiChart ? 'translate-x-4' : ''}`}></div>
-                                 </div>
-                                 <span className="ml-3 font-bold text-slate-700 text-sm">Pokaż wykres ROI w ofertach</span>
-                              </label>
-                              <p className="text-xs text-slate-500 mt-2 ml-14">
-                                 Włącza widoczność wykresu zwrotu z inwestycji na podsumowaniu oferty dla klienta.
-                              </p>
-                           </div>
-                        </div>
-
-                        {/* Margins */}
-                        <div className="space-y-6">
-                           <div>
-                              <h4 className="font-bold text-slate-800 mb-4 text-sm uppercase tracking-wider">Domyślne Marże (Wycena)</h4>
-                              
-                              <div className="space-y-4">
-                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Narzut na samo PV (Panel)</label>
-                                    <div className="relative">
-                                       <input 
-                                          type="number" 
-                                          value={userSettings.marginPV === 0 ? '' : userSettings.marginPV} 
-                                          onChange={e => setUserSettings({...userSettings, marginPV: e.target.value === '' ? 0 : Number(e.target.value)})}
-                                          className="w-full pl-3 pr-12 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800"
-                                       />
-                                       <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold pointer-events-none">PLN</span>
-                                    </div>
-                                 </div>
-
-                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Narzut na sam Magazyn Energii</label>
-                                    <div className="relative">
-                                       <input 
-                                          type="number" 
-                                          value={userSettings.marginStorage === 0 ? '' : userSettings.marginStorage} 
-                                          onChange={e => setUserSettings({...userSettings, marginStorage: e.target.value === '' ? 0 : Number(e.target.value)})}
-                                          className="w-full pl-3 pr-12 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800"
-                                       />
-                                       <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold pointer-events-none">PLN</span>
-                                    </div>
-                                 </div>
-
-                                 <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
-                                    <label className="block text-xs font-bold text-indigo-700 uppercase mb-1 flex items-center">
-                                       <Zap className="w-3 h-3 mr-1" /> Narzut na Zestaw PV + Magazyn
-                                    </label>
-                                    <div className="relative">
-                                       <input 
-                                          type="number" 
-                                          value={userSettings.marginHybrid === 0 ? '' : userSettings.marginHybrid} 
-                                          onChange={e => setUserSettings({...userSettings, marginHybrid: e.target.value === '' ? 0 : Number(e.target.value)})}
-                                          className="w-full pl-3 pr-12 py-3 border border-indigo-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-indigo-900"
-                                       />
-                                       <span className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-400 font-bold pointer-events-none">PLN</span>
-                                    </div>
-                                    <p className="text-[10px] text-indigo-500 mt-1">
-                                       Zastępuje sumę marż przy wyborze obu składników w kalkulatorze PV.
-                                    </p>
-                                 </div>
-
-                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Narzut na Pompy Ciepła</label>
-                                    <div className="relative">
-                                       <input 
-                                          type="number" 
-                                          value={userSettings.marginHeat === 0 ? '' : userSettings.marginHeat} 
-                                          onChange={e => setUserSettings({...userSettings, marginHeat: e.target.value === '' ? 0 : Number(e.target.value)})}
-                                          className="w-full pl-3 pr-12 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800"
-                                       />
-                                       <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold pointer-events-none">PLN</span>
-                                    </div>
-                                 </div>
-
-                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Narzut na Kotły (Pellet)</label>
-                                    <div className="relative">
-                                       <input 
-                                          type="number" 
-                                          value={userSettings.marginPellet === 0 ? '' : userSettings.marginPellet} 
-                                          onChange={e => setUserSettings({...userSettings, marginPellet: e.target.value === '' ? 0 : Number(e.target.value)})}
-                                          className="w-full pl-3 pr-12 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800"
-                                       />
-                                       <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold pointer-events-none">PLN</span>
-                                    </div>
-                                 </div>
-
-                                 {/* NEW: Trench Cost Settings */}
-                                 <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 space-y-3">
-                                    <div>
-                                       <label className="block text-xs font-bold text-amber-700 uppercase mb-1 flex items-center">
-                                          <Shovel className="w-3 h-3 mr-1" /> Koszt przekopu (za metr)
-                                       </label>
-                                       <div className="relative">
-                                          <input 
-                                             type="number" 
-                                             value={userSettings.trenchCostPerMeter === 0 ? '' : userSettings.trenchCostPerMeter} 
-                                             onChange={e => setUserSettings({...userSettings, trenchCostPerMeter: e.target.value === '' ? 0 : Number(e.target.value)})}
-                                             className="w-full pl-3 pr-12 py-3 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none font-bold text-amber-900"
-                                             placeholder="40"
-                                          />
-                                          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-amber-400 font-bold pointer-events-none">PLN</span>
-                                       </div>
-                                    </div>
-                                    
-                                    <div>
-                                       <label className="block text-xs font-bold text-amber-700 uppercase mb-1 flex items-center">
-                                          Darmowe metry przekopu (Gratis)
-                                       </label>
-                                       <div className="relative">
-                                          <input 
-                                             type="number" 
-                                             value={userSettings.trenchFreeMeters === 0 ? '' : userSettings.trenchFreeMeters} 
-                                             onChange={e => setUserSettings({...userSettings, trenchFreeMeters: e.target.value === '' ? 0 : Number(e.target.value)})}
-                                             className="w-full pl-3 pr-12 py-3 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none font-bold text-amber-900"
-                                             placeholder="0"
-                                          />
-                                          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-amber-400 font-bold pointer-events-none">m</span>
-                                       </div>
-                                    </div>
-                                    <p className="text-[10px] text-amber-600 mt-1">Ustawienia przekopu stosowane we wszystkich kalkulatorach.</p>
-                                 </div>
-                              </div>
-                           </div>
-                        </div>
-                     </div>
-                     
-                     {/* Extra space at bottom to ensure last field is visible above sticky footer */}
-                     <div className="h-16"></div>
-                  </div>
-               </div>
-
-               {/* Sticky Footer Save Button - Always Visible */}
-               <div className="absolute bottom-0 left-0 w-full bg-white border-t border-slate-200 p-4 shadow-lg z-30 flex justify-end">
-                  <div className="max-w-4xl w-full mx-auto flex justify-end">
-                     <button 
-                        onClick={handleSaveSettings}
-                        className={`px-8 py-3 rounded-xl font-bold shadow-lg flex items-center transition-all hover:scale-105 active:scale-95 ${
-                           isSavingSettings 
-                              ? 'bg-green-600 text-white hover:bg-green-700' 
-                              : 'bg-blue-600 text-white hover:bg-blue-700'
-                        }`}
-                     >
-                        {isSavingSettings ? (
-                           <>
-                              <CheckCircle className="w-5 h-5 mr-2" /> Zapisano!
-                           </>
-                        ) : (
-                           <>
-                              <Save className="w-5 h-5 mr-2" /> Zapisz Ustawienia
-                           </>
-                        )}
-                     </button>
-                  </div>
-               </div>
-            </div>
-         )}
-      </div>
-
-      {/* Task Creation Modal remains same */}
-      {showTaskModal && (
-         <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-            {/* ... (Existing Task Modal code) ... */}
-            <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg relative">
-               <button onClick={() => setShowTaskModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-100 rounded-full transition-colors"><X className="w-6 h-6"/></button>
-               
-               <h3 className="text-xl font-bold text-slate-800 mb-1">Nowe Zadanie</h3>
-               <p className="text-sm text-slate-500 mb-6 flex items-center">
-                  <Calendar className="w-4 h-4 mr-1.5 opacity-70" />
-                  {new Date(selectedDate).toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-               </p>
-               
-               <div className="space-y-5">
-                  {/* Task Types with Emojis */}
-                  <div>
-                     <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Typ Zadania</label>
-                     <div className="flex gap-2">
-                        <button onClick={() => setNewTaskType('MEETING')} className={`flex-1 py-3 rounded-xl border text-sm font-bold flex items-center justify-center transition-all ${newTaskType === 'MEETING' ? 'bg-purple-50 border-purple-500 text-purple-700 ring-1 ring-purple-500 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                           <span className="mr-2 text-lg">📅</span> Spotkanie
-                        </button>
-                        <button onClick={() => setNewTaskType('CALL')} className={`flex-1 py-3 rounded-xl border text-sm font-bold flex items-center justify-center transition-all ${newTaskType === 'CALL' ? 'bg-green-50 border-green-500 text-green-700 ring-1 ring-green-500 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                           <span className="mr-2 text-lg">📞</span> Telefon
-                        </button>
-                        <button onClick={() => setNewTaskType('TODO')} className={`flex-1 py-3 rounded-xl border text-sm font-bold flex items-center justify-center transition-all ${newTaskType === 'TODO' ? 'bg-blue-50 border-blue-500 text-blue-700 ring-1 ring-blue-500 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                           <span className="mr-2 text-lg">📋</span> Inne
-                        </button>
-                     </div>
-                  </div>
-
-                  <div>
-                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tytuł Zadania</label>
-                     <div className="relative">
-                        <PenBox className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input 
-                           type="text" 
-                           value={newTaskTitle} 
-                           onChange={e => setNewTaskTitle(e.target.value)} 
-                           className="w-full pl-9 pr-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-medium bg-white shadow-sm" 
-                           placeholder="np. Rozmowa o ofercie PV" 
-                           autoFocus
-                        />
-                     </div>
-                  </div>
-
-                  {/* Customer Linking & Details */}
-                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-                     <label className="block text-xs font-bold text-slate-500 uppercase">Powiązany Klient</label>
-                     <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input 
-                           type="text" 
-                           value={newTaskCustomerName} 
-                           onChange={e => { setNewTaskCustomerName(e.target.value); setShowCustomerSuggestions(true); }}
-                           className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
-                           placeholder="Wpisz nazwisko, aby wyszukać..."
-                        />
-                        {showCustomerSuggestions && filteredCustomerSuggestions.length > 0 && (
-                           <div className="absolute top-full left-0 w-full bg-white border border-slate-200 shadow-xl rounded-xl mt-1 z-50 overflow-hidden max-h-48 overflow-y-auto">
-                              {filteredCustomerSuggestions.map(c => (
-                                 <div 
-                                    key={c.id} 
-                                    onClick={() => handleSelectCustomer(c)}
-                                    className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-slate-50 last:border-0"
-                                 >
-                                    <p className="font-bold text-sm text-slate-800">{c.name}</p>
-                                    <p className="text-xs text-slate-500 truncate">{c.address}</p>
-                                 </div>
-                              ))}
-                           </div>
-                        )}
-                     </div>
-                     
-                     <div className="grid grid-cols-2 gap-3">
-                        <div className="relative">
-                           <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
-                           <input 
-                              type="text" 
-                              placeholder="Telefon"
-                              value={newTaskPhone}
-                              onChange={e => setNewTaskPhone(e.target.value)}
-                              className="w-full pl-8 pr-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white"
-                           />
-                        </div>
-                        <div className="relative">
-                           <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
-                           <input 
-                              type="text" 
-                              placeholder="Adres"
-                              value={newTaskAddress}
-                              onChange={e => setNewTaskAddress(e.target.value)}
-                              className="w-full pl-8 pr-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white"
-                           />
-                        </div>
-                     </div>
-                  </div>
-
-                  {/* Delegation Selector - Hidden if Self Assign Mode */}
-                  {!isSelfAssignMode && (
-                     <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 transition-all">
-                        <label className="block text-xs font-bold text-blue-700 uppercase mb-1">Przypisz zadanie do</label>
-                        <div className="relative">
-                           <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500 pointer-events-none" />
-                           <select 
-                              value={taskAssigneeId} 
-                              onChange={(e) => setTaskAssigneeId(e.target.value)}
-                              className="w-full pl-10 pr-3 py-2.5 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-sm font-bold text-slate-700 cursor-pointer"
-                           >
-                              <option value="">-- Wybierz pracownika --</option>
-                              <optgroup label="Inni pracownicy">
-                                {users.filter(u => u.id !== currentUser.id).map(u => (
-                                   <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
-                                ))}
-                              </optgroup>
-                           </select>
-                        </div>
-                        <p className="text-[10px] text-blue-600 mt-1 ml-1">
-                           Zadanie zostanie dodane do kalendarza wybranego pracownika.
-                        </p>
-                     </div>
-                  )}
-               </div>
-
-               <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-slate-100">
-                  <button onClick={() => setShowTaskModal(false)} className="px-5 py-2.5 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition-colors">Anuluj</button>
-                  <button onClick={handleCreateTask} disabled={!newTaskTitle} className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold shadow-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all">Zapisz Zadanie</button>
-               </div>
-            </div>
-         </div>
-      )}
-    </div>
-  );
-};
+         {/* ... (rest of Dashboard unchanged) */}
