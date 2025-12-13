@@ -1,11 +1,9 @@
 
-// ... (imports)
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Installation, InstallationStatus, InventoryItem, Customer, ViewState, User, UserRole, Task, Message, SalesSettings, TaskType, AppNotification } from '../types';
 import { TrendingUp, AlertTriangle, CheckCircle, Zap, Users, Wallet, ArrowRight, Sun, Calendar, Plus, X, CloudRain, CloudSun, MapPin, Loader2, Battery, Flame, Mail, Settings, BarChart3, CalendarDays, ChevronLeft, ChevronRight, MessageSquare, Send, Save, RefreshCw, ToggleLeft, ToggleRight, Percent, Wrench, CheckSquare, Phone, Briefcase, FileText, UserCircle, Edit2, Trash2, UserPlus, Search, UserCheck, Eye, EyeOff, RotateCcw, Check, Bell, MoreVertical, PenBox, Clock, LogOut, Filter, Square, Globe, Banknote, Leaf, Shovel, AlertOctagon, XCircle, Hammer } from 'lucide-react';
 import { NotificationsCenter } from './NotificationsCenter';
 
-// ... (Interface & Constants remain same)
 interface DashboardProps {
   installations: Installation[];
   inventory: InventoryItem[];
@@ -31,11 +29,9 @@ interface DashboardProps {
 
 const WEATHER_API_KEY = 'c2c69b309bf74c33822224731250612';
 
-// Message tab removed from types
 type DashboardTab = 'OVERVIEW' | 'CALENDAR' | 'SETTINGS' | 'NOTIFICATIONS';
 type StatsPeriod = 'WEEK' | 'MONTH' | 'YEAR' | 'CUSTOM';
 
-// ... (CalendarEvent interface & Holidays const)
 interface CalendarEvent {
    id: string;
    type: 'TASK' | 'INSTALLATION';
@@ -52,7 +48,7 @@ interface CalendarEvent {
    createdBy?: string; 
    systemSizeKw?: number;
    storageSizeKw?: number;
-   installationType?: 'PV' | 'PVME' | 'ME' | 'HEAT'; // Added for styling
+   installationType?: 'PV' | 'PVME' | 'ME' | 'HEAT';
 }
 
 const POLISH_HOLIDAYS: Record<string, string> = {
@@ -73,14 +69,13 @@ const getInstallationType = (inst: Installation): 'PV' | 'PVME' | 'ME' | 'HEAT' 
    if (inst.type === 'PV') return 'PV';
    if (inst.type === 'ME') return 'ME';
 
-   // Fallback for older records
    const hasPV = inst.systemSizeKw > 0;
    const hasStorage = inst.storageSizeKw && inst.storageSizeKw > 0;
    
    if (hasPV && hasStorage) return 'PVME';
    if (hasPV) return 'PV';
    if (hasStorage) return 'ME';
-   return 'HEAT'; // Default to Heat if no PV/Storage but exists (e.g. systemSizeKw === 0)
+   return 'HEAT'; 
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({ 
@@ -111,10 +106,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [showGlobalProfit, setShowGlobalProfit] = useState(false);
   const [showGlobalMargin, setShowGlobalMargin] = useState(false);
 
-  // Admin filter state
   const [dashboardUserFilter, setDashboardUserFilter] = useState<string>(currentUser.role === UserRole.ADMIN ? 'ALL' : currentUser.id);
 
-  // Custom Date Range
   const [customDateStart, setCustomDateStart] = useState<string>(
      new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
   );
@@ -122,30 +115,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
      new Date().toISOString().split('T')[0]
   );
   
-  // Settings
   const [userSettings, setUserSettings] = useState<SalesSettings>({
     location: currentUser.salesSettings?.location || 'Warszawa',
     marginPV: currentUser.salesSettings?.marginPV || 0,
     marginHeat: currentUser.salesSettings?.marginHeat || 0,
-    marginPellet: currentUser.salesSettings?.marginPellet || 0, // NEW field
+    marginPellet: currentUser.salesSettings?.marginPellet || 0,
     marginStorage: currentUser.salesSettings?.marginStorage || 0,
     marginHybrid: currentUser.salesSettings?.marginHybrid || 0, 
     showRoiChart: currentUser.salesSettings?.showRoiChart ?? true, 
     trenchCostPerMeter: currentUser.salesSettings?.trenchCostPerMeter || 40,
-    trenchFreeMeters: currentUser.salesSettings?.trenchFreeMeters || 0, // NEW field for free meters
+    trenchFreeMeters: currentUser.salesSettings?.trenchFreeMeters || 0,
   });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
-  // ... (Rest of state remains same)
-  // Calendar
   const [currentDate, setCurrentDate] = useState(new Date());
   
-  // Modals
   const [showDayDetailsModal, setShowDayDetailsModal] = useState(false);
   const [showTaskModal, setShowTaskModal] = useState(false); 
   const [isSelfAssignMode, setIsSelfAssignMode] = useState(false);
   
-  // New Task
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskType, setNewTaskType] = useState<TaskType>('TODO');
   const [newTaskCustomerName, setNewTaskCustomerName] = useState('');
@@ -153,18 +141,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [newTaskPhone, setNewTaskPhone] = useState('');
   const [newTaskAddress, setNewTaskAddress] = useState('');
   
-  // Autocomplete
   const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
 
-  // Delegation
   const [taskAssigneeId, setTaskAssigneeId] = useState<string>(currentUser.id);
-  
-  // Edit Task
   const [taskToEdit, setTaskToEdit] = useState<Task | null>(null);
 
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
-  // Weather
   const [weatherData, setWeatherData] = useState<{
     temp: number;
     conditionText: string;
@@ -179,13 +162,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
     loading: true
   });
 
-  const canDelegate = true; // Always true as requested
+  const canDelegate = true;
   const isAdmin = currentUser.role === UserRole.ADMIN;
 
-  // Filter notifications based on role before counting to fix badge discrepancy
   const unreadNotificationsCount = useMemo(() => {
      let visible = notifications;
-     // Only Admin and Office can see STOCK notifications
      const canSeeStock = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.OFFICE;
      if (!canSeeStock) {
         visible = visible.filter(n => n.category !== 'STOCK');
@@ -198,8 +179,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return c ? c.name : 'Nieznany';
   };
 
-  // ... (Filtered Customer Suggestions, Weather Fetch, Stats Logic, Calendar Logic remain the same)
-  // Filter customers for autocomplete
   const filteredCustomerSuggestions = useMemo(() => {
      if (!newTaskCustomerName || newTaskCustomerId) return [];
      return customers
@@ -215,7 +194,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
      setShowCustomerSuggestions(false);
   };
 
-  // Weather Fetch
   useEffect(() => {
     const fetchWeather = async (query: string) => {
       try {
@@ -246,11 +224,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   }, [userSettings.location]);
 
-  // --- STATS LOGIC ---
   const stats = useMemo(() => {
     let relevantInstalls = installations;
     
-    // Filter by User Logic (Global vs Specific)
     if (dashboardUserFilter !== 'ALL') {
        const myCustIds = customers.filter(c => c.repId === dashboardUserFilter).map(c => c.id);
        relevantInstalls = installations.filter(i => myCustIds.includes(i.customerId));
@@ -266,10 +242,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     else if (statsPeriod === 'CUSTOM') { startDate = new Date(customDateStart); endDate = new Date(customDateEnd); endDate.setHours(23, 59, 59, 999); }
 
     const filteredInstalls = relevantInstalls.filter(i => {
-       // Only filter NEW (Leads) out of stats. Keep Drop and others for specific counters.
        if (i.status === InstallationStatus.NEW) return false;
 
-       // If it has a date, check range. If NO date, it means accepted but unscheduled -> INCLUDE IT.
        if (!i.dateScheduled) {
           return true; 
        }
@@ -282,7 +256,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     let hybridCount = 0; 
     let heatingCount = 0; 
     
-    // NEW COUNTERS
     let rescueCount = 0;
     let dropCount = 0;
 
@@ -291,21 +264,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
     let totalCompanyMargin = 0;
     let totalGrossRevenue = 0;
     
-    // Personal split percentage 
     const splitPercentage = (currentUser.commissionSplit || 0) / 100;
 
     filteredInstalls.forEach(i => {
-       // --- STATUS COUNTERS FOR DASHBOARD TILES ---
        if (i.status === InstallationStatus.DROP) {
           dropCount++;
-          return; // Skip revenue calc for drops
+          return;
        }
        
        if (i.status === InstallationStatus.CONTRACT_RESCUE) {
           rescueCount++;
        }
 
-       // --- COUNTING LOGIC (Prioritize Explicit Type) ---
        if (i.type === 'HEATING') {
           heatingCount++;
        } else if (i.type === 'PV_STORAGE') {
@@ -315,7 +285,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
        } else if (i.type === 'ME') {
           storageOnlyCount++;
        } else {
-          // Fallback logic
           const hasPV = i.systemSizeKw > 0;
           const hasStorage = i.storageSizeKw && i.storageSizeKw > 0;
           
@@ -330,10 +299,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
           }
        }
 
-       // --- FINANCIAL LOGIC ---
        let dealMargin = i.commissionValue !== undefined ? Number(i.commissionValue) : 0;
        
-       // Fallback margin calc if not set on installation
        if (!dealMargin) { 
            if (i.type === 'PV_STORAGE') {
               dealMargin += (userSettings.marginHybrid || 0); 
@@ -343,10 +310,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
            }
        }
        
-       // CONTRACTED JOBS Logic
        const contractedStatuses = [
           InstallationStatus.CONTRACT,
-          InstallationStatus.CONTRACT_RESCUE, // Include rescue as signed revenue (until dropped)
+          InstallationStatus.CONTRACT_RESCUE,
           InstallationStatus.PROJECT,
           InstallationStatus.INSTALLATION,
           InstallationStatus.GRID_CONNECTION,
@@ -370,7 +336,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     return { 
        pvOnlyCount, storageOnlyCount, hybridCount, heatingCount,
-       rescueCount, dropCount, // Exposed for UI
+       rescueCount, dropCount,
        earnedMargin, pendingMargin,
        totalKW: filteredInstalls.reduce((acc, curr) => acc + curr.systemSizeKw, 0),
        statusCounts,
@@ -382,7 +348,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const calendarEvents = useMemo(() => {
      const events: CalendarEvent[] = [];
-     // Show tasks assigned to current user OR tasks created by current user
      tasks.filter(t => t.assignedTo === currentUser.id || t.createdBy === currentUser.id).forEach(t => {
         events.push({
            id: t.id,
@@ -471,8 +436,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const handleSaveSettings = () => {
      setIsSavingSettings(true);
      onUpdateSettings(userSettings);
-     
-     // Visual feedback timer
      setTimeout(() => {
         setIsSavingSettings(false);
      }, 2000);
@@ -483,7 +446,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return [1000].includes(weatherData.code) ? <Sun className="text-yellow-400 w-6 h-6 mr-4" /> : <CloudSun className="text-slate-300 w-6 h-6 mr-4" />;
   };
 
-  // ... (renderCalendar, StatusCard remain same)
   const renderCalendar = () => {
      const year = currentDate.getFullYear();
      const month = currentDate.getMonth();
@@ -491,10 +453,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
      const startDay = new Date(year, month, 1).getDay() || 7;
      const days = [];
      
-     // Empty days
      for (let i = 0; i < startDay - 1; i++) days.push(<div key={`empty-${i}`} className="bg-slate-50/50 border-b border-r border-slate-200 min-h-[100px]"></div>);
      
-     // Days
      for (let d = 1; d <= daysInMonth; d++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         const dayEvents = calendarEvents.filter(e => e.date === dateStr);
@@ -581,9 +541,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   return (
     <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
       
-      {/* Header */}
       <div className="bg-white border-b border-slate-200 px-4 py-4 md:px-8 shadow-sm z-10 shrink-0">
-         {/* ... (Header content) ... */}
          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
                <h1 className="text-2xl font-bold text-slate-800">Pulpit</h1>
@@ -601,7 +559,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
          </div>
          
-         {/* Tabs */}
          <div className="flex space-x-1 mt-6 overflow-x-auto hide-scrollbar">
             {[
                { id: 'OVERVIEW', label: 'Przegląd', icon: BarChart3 },
@@ -626,14 +583,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       <div className="flex-1 overflow-hidden relative flex flex-col">
          
-         {/* TAB: OVERVIEW */}
          {activeTab === 'OVERVIEW' && (
             <div className="h-full overflow-y-auto p-3 md:p-8 space-y-6 md:space-y-8 animate-fade-in custom-scrollbar">
-               {/* ... (Previous Overview Content) ... */}
-               {/* ADMIN TILES ROW */}
                {dashboardUserFilter === 'ALL' && isAdmin && (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                     {/* GROSS REVENUE TILE */}
                      <div 
                         onClick={() => setShowGlobalProfit(!showGlobalProfit)}
                         className="bg-gradient-to-br from-emerald-600 to-teal-800 p-8 rounded-3xl shadow-xl text-white cursor-pointer hover:scale-[1.01] transition-transform relative overflow-hidden h-48 flex flex-col justify-center"
@@ -657,7 +610,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         </div>
                      </div>
 
-                     {/* TOTAL MARGIN TILE */}
                      <div 
                         onClick={() => setShowGlobalMargin(!showGlobalMargin)}
                         className="bg-gradient-to-br from-indigo-600 to-violet-800 p-8 rounded-3xl shadow-xl text-white cursor-pointer hover:scale-[1.01] transition-transform relative overflow-hidden h-48 flex flex-col justify-center"
@@ -683,9 +635,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </div>
                )}
 
-               {/* Date Filter Bar */}
                <div className="flex flex-col md:flex-row justify-between items-center bg-white p-2 rounded-xl shadow-sm border border-slate-200 gap-4">
-                  {/* ... (Filters) ... */}
                   <div className="flex items-center gap-4 w-full md:w-auto overflow-x-auto">
                      <div className="text-sm font-bold text-slate-500 ml-2 flex items-center whitespace-nowrap">
                         <Filter className="w-4 h-4 mr-2" /> Filtruj dane:
@@ -713,7 +663,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                      </div>
                   </div>
 
-                  {/* ADMIN USER FILTER */}
                   {isAdmin && (
                      <div className="flex items-center gap-2 border-t md:border-t-0 md:border-l border-slate-100 pt-2 md:pt-0 md:pl-4 w-full md:w-auto">
                         <div className="text-sm font-bold text-slate-500 flex items-center whitespace-nowrap">
@@ -746,9 +695,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   )}
                </div>
 
-               {/* Stats Grid - Same as before */}
                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {/* PV Only */}
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                      <div className="flex justify-between items-start mb-4">
                         <div className="p-3 bg-amber-50 text-amber-600 rounded-xl"><Sun className="w-6 h-6"/></div>
@@ -760,7 +707,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                      </div>
                   </div>
 
-                  {/* Hybrid (PV + Storage) */}
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden">
                      <div className="absolute top-0 right-0 p-2 opacity-5"><Zap className="w-24 h-24"/></div>
                      <div className="flex justify-between items-start mb-4 relative z-10">
@@ -773,7 +719,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                      </div>
                   </div>
 
-                  {/* Storage Only */}
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                      <div className="flex justify-between items-start mb-4">
                         <div className="p-3 bg-green-50 text-green-600 rounded-xl"><Battery className="w-6 h-6"/></div>
@@ -785,7 +730,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                      </div>
                   </div>
 
-                  {/* Heating Systems (Combined) */}
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                      <div className="flex justify-between items-start mb-4">
                         <div className="p-3 bg-red-50 text-red-600 rounded-xl"><Flame className="w-6 h-6"/></div>
@@ -799,7 +743,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </div>
                </div>
 
-               {/* --- INSTALLATION STAGES (RESTORED) --- */}
                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
                   <h3 className="font-bold text-lg text-slate-800 mb-6 flex items-center">
                      <Wrench className="w-5 h-5 mr-2 text-slate-500" /> Etapy Realizacji (Aktualny Okres)
@@ -811,13 +754,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                      <StatusCard label="Montaż" count={stats.statusCounts[InstallationStatus.INSTALLATION] || 0} color="bg-amber-100 text-amber-700" icon={Hammer} />
                      <StatusCard label="OSD" count={stats.statusCounts[InstallationStatus.GRID_CONNECTION] || 0} color="bg-purple-100 text-purple-700" icon={Zap} />
                      <StatusCard label="Zakończone" count={stats.statusCounts[InstallationStatus.COMPLETED] || 0} color="bg-green-100 text-green-700" icon={CheckCircle} />
-                     {/* Added Rescue and Drop Tiles */}
                      <StatusCard label="Do Uratowania" count={stats.rescueCount} color="bg-orange-100 text-orange-700" icon={AlertOctagon} />
                      <StatusCard label="Spadek" count={stats.dropCount} color="bg-red-100 text-red-700" icon={XCircle} />
                   </div>
                </div>
 
-               {/* --- UPCOMING INSTALLATIONS LIST (RESTORED) --- */}
                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                   <div className="p-6 border-b border-slate-100 flex justify-between items-center">
                      <h3 className="font-bold text-lg text-slate-800 flex items-center">
@@ -865,7 +806,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </div>
                </div>
                   
-               {/* PERSONAL COMMISSION TILE (If not admin viewing global) */}
                {(!isAdmin || dashboardUserFilter !== 'ALL') && (
                   <div className="mt-2">
                      <div 
@@ -892,4 +832,222 @@ export const Dashboard: React.FC<DashboardProps> = ({
                )}
             </div>
          )}
-         {/* ... (rest of Dashboard unchanged) */}
+         
+         {activeTab === 'CALENDAR' && (
+            <div className="h-full overflow-y-auto p-3 md:p-8 custom-scrollbar">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-[600px]">
+                 <div className="p-4 md:p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 shrink-0">
+                    <div className="flex items-center space-x-4">
+                       <h3 className="text-lg md:text-2xl font-bold text-slate-800 capitalize">
+                         {currentDate.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' })}
+                       </h3>
+                       <div className="flex space-x-1 bg-white rounded-lg border border-slate-200 p-0.5">
+                         <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))} className="p-1"><ChevronLeft className="w-5 h-5"/></button>
+                         <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))} className="p-1"><ChevronRight className="w-5 h-5"/></button>
+                         <div className="w-px h-6 bg-slate-100 mx-1"></div>
+                         <button onClick={() => setCurrentDate(new Date())} className="px-3 py-1 text-xs font-bold text-blue-600 hover:bg-blue-50 rounded">Dziś</button>
+                       </div>
+                    </div>
+                 </div>
+                 
+                 <div className="flex-1 overflow-y-auto p-2 md:p-6 pt-0 flex flex-col relative min-h-0">
+                    <div className="grid grid-cols-7 gap-px mb-2 text-center min-w-[300px] shrink-0 sticky top-0 bg-white z-10 pt-4 pb-2 border-b border-slate-100">
+                       {['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Ndz'].map((day, i) => (
+                         <div key={day} className={`text-[10px] md:text-xs font-bold uppercase ${i >= 5 ? 'text-red-400' : 'text-slate-400'}`}>{day}</div>
+                       ))}
+                    </div>
+                    <div className="grid grid-cols-7 border border-slate-200 bg-slate-200 gap-px rounded-xl overflow-hidden shadow-inner min-w-[300px] auto-rows-fr">
+                       {renderCalendar()}
+                    </div>
+                 </div>
+              </div>
+            </div>
+         )}
+         
+         {activeTab === 'NOTIFICATIONS' && (
+             <NotificationsCenter 
+                notifications={notifications || []}
+                onMarkAsRead={onMarkAsRead || (() => {})}
+                onMarkAsUnread={onMarkAsUnread || (() => {})}
+                onMarkAllAsRead={onMarkAllAsRead || (() => {})}
+                onDeleteNotification={onDeleteNotification || (() => {})}
+                onNavigate={(v, id) => { if (onNavigate) onNavigate(v, id); }}
+                currentUser={currentUser}
+             />
+         )}
+
+         {activeTab === 'SETTINGS' && (
+             <div className="h-full overflow-y-auto p-3 md:p-8 custom-scrollbar">
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 max-w-2xl mx-auto">
+                   <h3 className="font-bold text-lg text-slate-800 mb-6 flex items-center">
+                      <Settings className="w-6 h-6 mr-2 text-slate-500" /> Ustawienia Osobiste
+                   </h3>
+                   
+                   <div className="space-y-6">
+                      <div>
+                         <label className="block text-sm font-bold text-slate-600 mb-2">Lokalizacja (Pogoda)</label>
+                         <input 
+                           type="text" 
+                           value={userSettings.location}
+                           onChange={(e) => setUserSettings({...userSettings, location: e.target.value})}
+                           className="w-full p-3 border border-slate-300 rounded-xl"
+                        />
+                      </div>
+                      
+                      {currentUser.role === UserRole.SALES && (
+                      <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                         <h4 className="font-bold text-blue-800 mb-4 text-sm uppercase">Twoje Marże (Domyślne)</h4>
+                         <div className="grid grid-cols-2 gap-4">
+                            <div>
+                               <label className="block text-xs font-bold text-blue-600 mb-1">PV (%)</label>
+                               <input type="number" value={userSettings.marginPV} onChange={e => setUserSettings({...userSettings, marginPV: Number(e.target.value)})} className="w-full p-2 border rounded-lg" />
+                            </div>
+                            <div>
+                               <label className="block text-xs font-bold text-blue-600 mb-1">Pompy Ciepła (PLN)</label>
+                               <input type="number" value={userSettings.marginHeat} onChange={e => setUserSettings({...userSettings, marginHeat: Number(e.target.value)})} className="w-full p-2 border rounded-lg" />
+                            </div>
+                            <div>
+                               <label className="block text-xs font-bold text-blue-600 mb-1">Magazyny (PLN)</label>
+                               <input type="number" value={userSettings.marginStorage} onChange={e => setUserSettings({...userSettings, marginStorage: Number(e.target.value)})} className="w-full p-2 border rounded-lg" />
+                            </div>
+                            <div>
+                               <label className="block text-xs font-bold text-blue-600 mb-1">Hybryda (PLN)</label>
+                               <input type="number" value={userSettings.marginHybrid} onChange={e => setUserSettings({...userSettings, marginHybrid: Number(e.target.value)})} className="w-full p-2 border rounded-lg" />
+                            </div>
+                         </div>
+                      </div>
+                      )}
+                      
+                      <div className="flex justify-end pt-4 border-t border-slate-100">
+                         <button 
+                           onClick={handleSaveSettings}
+                           disabled={isSavingSettings}
+                           className="bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-xl font-bold shadow-sm transition-all disabled:opacity-70"
+                         >
+                            {isSavingSettings ? 'Zapisywanie...' : 'Zapisz Ustawienia'}
+                         </button>
+                      </div>
+                   </div>
+                </div>
+             </div>
+         )}
+      </div>
+
+      {showTaskModal && (
+         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
+               <h3 className="text-lg font-bold mb-4">Nowe Zadanie ({selectedDate})</h3>
+               
+               <div className="space-y-4">
+                   <input 
+                       type="text" 
+                       value={newTaskTitle}
+                       onChange={(e) => setNewTaskTitle(e.target.value)}
+                       placeholder="Tytuł zadania..."
+                       className="w-full p-3 border border-slate-300 rounded-lg"
+                   />
+                   
+                   <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                      <input 
+                         type="text" 
+                         value={newTaskCustomerName} 
+                         onChange={(e) => { setNewTaskCustomerName(e.target.value); setShowCustomerSuggestions(true); }}
+                         placeholder="Powiąż z klientem (opcjonalne)"
+                         className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm"
+                      />
+                      {showCustomerSuggestions && filteredCustomerSuggestions.length > 0 && (
+                         <div className="absolute z-10 w-full bg-white border border-slate-200 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto">
+                            {filteredCustomerSuggestions.map(c => (
+                               <div 
+                                 key={c.id} 
+                                 onClick={() => handleSelectCustomer(c)}
+                                 className="p-2 hover:bg-blue-50 cursor-pointer text-sm"
+                               >
+                                  <div className="font-bold">{c.name}</div>
+                                  <div className="text-xs text-slate-500">{c.address}</div>
+                               </div>
+                            ))}
+                         </div>
+                      )}
+                   </div>
+                   
+                   {canDelegate && (
+                      <div>
+                         <label className="block text-xs font-bold text-slate-500 mb-1">Przypisz do</label>
+                         <select 
+                           value={taskAssigneeId} 
+                           onChange={(e) => setTaskAssigneeId(e.target.value)}
+                           className="w-full p-2 border border-slate-300 rounded-lg text-sm"
+                         >
+                            <option value={currentUser.id}>Ja ({currentUser.name})</option>
+                            {users?.filter(u => u.id !== currentUser.id).map(u => (
+                               <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                            ))}
+                         </select>
+                      </div>
+                   )}
+               </div>
+
+               <div className="flex justify-end space-x-2 mt-6">
+                  <button onClick={() => setShowTaskModal(false)} className="px-4 py-2 text-slate-500 font-bold hover:bg-slate-100 rounded-lg transition-colors">Anuluj</button>
+                  <button onClick={handleCreateTask} disabled={!newTaskTitle} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50">Dodaj</button>
+               </div>
+            </div>
+         </div>
+      )}
+
+      {showDayDetailsModal && (
+         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+               <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl">
+                  <h3 className="text-lg font-bold text-slate-800">Szczegóły dnia: {selectedDate}</h3>
+                  <button onClick={() => setShowDayDetailsModal(false)} className="p-2 hover:bg-slate-200 rounded-full text-slate-500"><X className="w-5 h-5"/></button>
+               </div>
+               
+               <div className="p-4 overflow-y-auto flex-1 custom-scrollbar">
+                  {calendarEvents.filter(e => e.date === selectedDate).length > 0 ? (
+                     <div className="space-y-3">
+                        {calendarEvents.filter(e => e.date === selectedDate).map(ev => (
+                           <div key={ev.id} className="p-3 border rounded-lg shadow-sm flex items-start gap-3 bg-white">
+                              <div className={`p-2 rounded-lg shrink-0 ${ev.type === 'INSTALLATION' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'}`}>
+                                 {ev.type === 'INSTALLATION' ? <Hammer className="w-5 h-5"/> : <CheckSquare className="w-5 h-5"/>}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                 <h4 className="font-bold text-slate-800 text-sm truncate">{ev.title}</h4>
+                                 <p className="text-xs text-slate-500 mt-1">{ev.type === 'INSTALLATION' ? `Status: ${ev.status}` : ev.customerName}</p>
+                                 {ev.phone && <a href={`tel:${ev.phone}`} className="text-xs text-blue-600 hover:underline mt-1 block font-medium">{ev.phone}</a>}
+                              </div>
+                              {ev.type === 'TASK' && (
+                                 <button 
+                                    onClick={() => handleToggleTaskCompletion(ev.id, ev.status === 'COMPLETED')}
+                                    className={`p-1 rounded-full border transition-all ${ev.status === 'COMPLETED' ? 'bg-green-500 border-green-500 text-white' : 'border-slate-300 text-transparent hover:border-green-500'}`}
+                                 >
+                                    <Check className="w-4 h-4" />
+                                 </button>
+                              )}
+                           </div>
+                        ))}
+                     </div>
+                  ) : (
+                     <div className="text-center py-10 text-slate-400">
+                        <Calendar className="w-12 h-12 mx-auto mb-2 opacity-20" />
+                        <p>Brak zadań w tym dniu.</p>
+                     </div>
+                  )}
+               </div>
+               
+               <div className="p-4 border-t border-slate-100 bg-slate-50 rounded-b-xl">
+                  <button 
+                     onClick={() => { setShowDayDetailsModal(false); setShowTaskModal(true); }}
+                     className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-sm transition-colors flex items-center justify-center"
+                  >
+                     <Plus className="w-4 h-4 mr-2" /> Dodaj Zadanie
+                  </button>
+               </div>
+            </div>
+         </div>
+      )}
+    </div>
+  );
+};

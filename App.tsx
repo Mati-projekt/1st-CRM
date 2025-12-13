@@ -1,5 +1,4 @@
 
-// ... (imports)
 import React, { useState, useEffect } from 'react';
 import { supabase } from './services/supabaseClient';
 import { 
@@ -23,14 +22,12 @@ import { NotificationsCenter } from './components/NotificationsCenter';
 import { MOCK_INVENTORY, MOCK_CUSTOMERS, MOCK_INSTALLATIONS, MOCK_USERS, MOCK_TASKS, MOCK_MESSAGES } from './constants';
 import { Loader2, Sun, Menu } from 'lucide-react';
 
-// ... (Mapping helpers remain the same)
 const mapProfileFromDB = (p: any): User => ({
   id: p.id,
-  name: p.name || p.email, // Fallback name
+  name: p.name || p.email,
   email: p.email,
   role: p.role as UserRole,
   phone: p.phone,
-  // Map JSONB/Columns to User properties
   salesSettings: p.sales_settings, 
   salesCategory: p.sales_category,
   managerId: p.manager_id,
@@ -38,7 +35,6 @@ const mapProfileFromDB = (p: any): User => ({
 });
 
 const mapProfileToDB = (u: Partial<User>) => ({
-  // id is usually handled by DB on insert, or passed on update
   name: u.name,
   email: u.email,
   role: u.role,
@@ -57,7 +53,7 @@ const mapCustomerFromDB = (c: any): Customer => ({
    address: c.address,
    notes: c.notes,
    notesHistory: c.notes_history || [],
-   repId: c.rep_id, // Map camelCase to snake_case
+   repId: c.rep_id,
    files: c.files || [],
    auditPhotos: c.audit_photos || [],
    offers: c.offers || []
@@ -70,10 +66,10 @@ const mapCustomerToDB = (c: Customer) => ({
    phone: c.phone,
    address: c.address,
    notes: c.notes,
-   notes_history: c.notesHistory, // Map camelCase to snake_case
-   rep_id: c.repId, // Map camelCase to snake_case
+   notes_history: c.notesHistory,
+   rep_id: c.repId,
    files: c.files,
-   audit_photos: c.auditPhotos, // Map camelCase to snake_case
+   audit_photos: c.auditPhotos,
    offers: c.offers
 });
 
@@ -83,7 +79,6 @@ const mapInstallationToDB = (inst: Partial<Installation>) => {
     address: inst.address,
     system_size_kw: inst.systemSizeKw,
     status: inst.status,
-    // Removed 'type' field as it is missing in DB schema and causing PGRST204 error
     price: inst.price,
     paid_amount: inst.paidAmount,
     panel_model: inst.panelModel,
@@ -109,7 +104,7 @@ const mapInstallationFromDB = (dbInst: any): Installation => {
     address: dbInst.address,
     systemSizeKw: dbInst.system_size_kw,
     status: dbInst.status,
-    type: dbInst.type, // Map Type if present (will be undefined if column missing)
+    type: dbInst.type,
     price: dbInst.price,
     paidAmount: dbInst.paid_amount,
     panelModel: dbInst.panel_model,
@@ -128,7 +123,6 @@ const mapInstallationFromDB = (dbInst: any): Installation => {
   };
 };
 
-// Map Inventory - Robust handling for optional fields
 const mapInventoryToDB = (i: InventoryItem) => ({
   id: i.id,
   name: i.name,
@@ -143,7 +137,6 @@ const mapInventoryToDB = (i: InventoryItem) => ({
   phases: i.phases || null,
   url: i.url || null,
   date_added: i.dateAdded || new Date().toISOString(),
-  // Use undefined instead of null to prevent sending keys for missing columns
   variant: i.variant || undefined, 
   voltage_type: i.voltageType || undefined,
   inverter_type: i.inverterType || undefined,
@@ -176,7 +169,6 @@ const mapInventoryFromDB = (i: any): InventoryItem => ({
   temperatureZone: i.temperature_zone
 });
 
-// Map Messages
 const mapMessageFromDB = (m: any): Message => ({
   id: m.id.toString(),
   fromId: m.from_id,
@@ -187,7 +179,6 @@ const mapMessageFromDB = (m: any): Message => ({
 });
 
 const App: React.FC = () => {
-  // ... (State declarations remain the same)
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(false);
   const [view, setView] = useState<ViewState>('DASHBOARD');
@@ -207,7 +198,6 @@ const App: React.FC = () => {
   const [pendingAnnouncement, setPendingAnnouncement] = useState<Announcement | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // ... (Effects remain the same)
   useEffect(() => {
     const savedNotifications = localStorage.getItem('appNotifications');
     if (savedNotifications) {
@@ -228,7 +218,6 @@ const App: React.FC = () => {
   useEffect(() => {
     if (inventory.length === 0) return;
     setNotifications(prevNotifications => {
-      // ... (Low stock logic remains the same)
       let updatedNotifications = [...prevNotifications];
       let hasChanges = false;
       inventory.forEach(item => {
@@ -410,7 +399,6 @@ const App: React.FC = () => {
      }));
   };
 
-  // ... (Other handlers remain the same until handleAcceptOffer)
   const handleAddCustomer = async (data: { name: string, email: string, phone: string, address: string }) => {
       const newCust: Customer = { id: crypto.randomUUID(), ...data, repId: currentUser?.id, notes: '', files: [], auditPhotos: [], offers: [] };
       setCustomers(prev => [...prev, newCust]);
@@ -511,7 +499,6 @@ const App: React.FC = () => {
      }
   };
 
-  // 5. OFFERS & INSTALLATIONS
   const handleAcceptOffer = async (custId: string, offId: string) => {
     if (!currentUser) return;
     
@@ -570,18 +557,15 @@ const App: React.FC = () => {
            };
 
        } else {
-           // PV or PV_STORAGE
            const calcState = acceptedOffer.calculatorState as CalculatorState;
        
            const panelItem = inventory.find(i => i.id === calcState.panelId);
            const panelModel = panelItem?.name || 'Standardowy Panel';
            const inverterModel = inventory.find(i => i.id === calcState.inverterId)?.name || 'Standardowy Falownik';
            
-           // Robust storage logic
            const storageItem = calcState.storageId ? inventory.find(i => i.id === calcState.storageId) : undefined;
            const storageModel = storageItem ? storageItem.name : (calcState.storageId ? 'Magazyn Energii' : undefined);
            
-           // Ensure storage size is calculated even if inventory lookup fails (fallback to 5kWh per unit if ID exists)
            let storageSize = 0;
            if (calcState.storageId) {
                const capacity = storageItem?.capacity || 5; 
@@ -591,8 +575,7 @@ const App: React.FC = () => {
 
            const totalCommission = (Number(acceptedOffer.appliedMarkup) || 0) + (Number(acceptedOffer.personalMarkup) || 0);
            
-           // Calculate System Size correctly from Panels, not consumption
-           const panelPower = panelItem?.power || 400; // default 400W
+           const panelPower = panelItem?.power || 400;
            const systemSizeKw = (panelPower * calcState.panelCount) / 1000;
 
            newInstallation = {
@@ -600,13 +583,13 @@ const App: React.FC = () => {
               address: customer.address,
               systemSizeKw: systemSizeKw,
               status: InstallationStatus.AUDIT,
-              type: storageSize > 0 ? 'PV_STORAGE' : 'PV', // Dynamically determine type based on storage presence
+              type: storageSize > 0 ? 'PV_STORAGE' : 'PV',
               price: acceptedOffer.finalPrice,
               paidAmount: 0,
               panelModel,
               inverterModel,
               storageModel,
-              storageSizeKw: storageSize, // Now guaranteed to be > 0 if ID exists
+              storageSizeKw: storageSize,
               mountingSystem: calcState.installationType === 'ROOF' ? `Dach ${calcState.roofMaterial}` : 'Grunt',
               trenchLength: calcState.trenchLength,
               commissionValue: totalCommission 
@@ -678,10 +661,8 @@ const App: React.FC = () => {
     return <Login onLogin={handleLogin} onLoginStart={() => setIsInitialLoading(true)} />;
   }
 
-  // ... (JSX return block remains the same)
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-900 relative">
-      {/* ... (Loading overlay same) ... */}
       {isInitialLoading && (
         <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-slate-900/40 backdrop-blur-md animate-fade-in transition-opacity duration-500">
            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/20 rounded-full blur-[100px] animate-pulse"></div>
@@ -703,7 +684,6 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Main App Content - Blurred only when loading */}
       <div className={`flex flex-1 w-full h-full transition-all duration-700 ${isInitialLoading ? 'filter blur-sm scale-[0.99] opacity-80 pointer-events-none' : 'filter-none scale-100 opacity-100'}`}>
         <Sidebar 
           currentView={view} 
@@ -717,7 +697,6 @@ const App: React.FC = () => {
         
         <main className="flex-1 flex flex-col h-full overflow-hidden relative w-full">
            
-           {/* MOBILE HEADER - NEW ADDITION */}
            <div className="md:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between shrink-0 z-30 shadow-sm">
               <div className="flex items-center space-x-3">
                  <div className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white p-1.5 rounded-lg shadow-md">
